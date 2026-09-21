@@ -3,8 +3,7 @@ const mongoose = require('mongoose');
 const alertSchema = new mongoose.Schema(
   {
     ruleId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Rule',
+      type: mongoose.Schema.Types.Mixed,
       default: null,
     },
     deviceId: {
@@ -33,7 +32,7 @@ const alertSchema = new mongoose.Schema(
       index: true,
     },
     valueDetected: {
-      type: Number,
+      type: mongoose.Schema.Types.Mixed,
       default: null,
     },
     threshold: {

@@ -3,6 +3,7 @@ const router = express.Router();
 const Telemetry = require('../models/Telemetry');
 const { getIsConnected } = require('../config/db');
 const { generateSingleTelemetry, generateTelemetryBatch } = require('../utils/telemetryGenerator');
+const { processTelemetry } = require('../engine/ruleEngine');
 
 let inMemoryTelemetry = generateTelemetryBatch(25);
 
@@ -213,7 +214,10 @@ router.post('/', async (req, res) => {
       // Ingest directly into MongoDB Time-Series collection
       const doc = new Telemetry(payload);
       const saved = await doc.save();
-      return res.status(201).json(normalizeTelemetry(saved));
+      const normalized = normalizeTelemetry(saved);
+      // Trigger real-time rule engine evaluation
+      processTelemetry(normalized);
+      return res.status(201).json(normalized);
     }
 
     const created = {
@@ -221,7 +225,10 @@ router.post('/', async (req, res) => {
       _id: `tel-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     };
     inMemoryTelemetry.unshift(created);
-    res.status(201).json(normalizeTelemetry(created));
+    const normalized = normalizeTelemetry(created);
+    // Trigger real-time rule engine evaluation
+    processTelemetry(normalized);
+    res.status(201).json(normalized);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -239,11 +246,15 @@ router.post('/generate', async (req, res) => {
       if (getIsConnected()) {
         const doc = new Telemetry(data);
         const saved = await doc.save();
-        generated.push(normalizeTelemetry(saved));
+        const norm = normalizeTelemetry(saved);
+        processTelemetry(norm);
+        generated.push(norm);
       } else {
         const created = { ...data, _id: `tel-${Date.now()}-${i}` };
         inMemoryTelemetry.unshift(created);
-        generated.push(normalizeTelemetry(created));
+        const norm = normalizeTelemetry(created);
+        processTelemetry(norm);
+        generated.push(norm);
       }
     }
 

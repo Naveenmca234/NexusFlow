@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const Rule = require('../models/Rule');
 const { getIsConnected } = require('../config/db');
 const { sampleRules } = require('../data/sampleData');
+const { activateRule, deactivateRule } = require('../engine/ruleEngine');
 
 let inMemoryRules = JSON.parse(JSON.stringify(sampleRules));
 
@@ -62,6 +63,8 @@ router.post('/', async (req, res) => {
     if (getIsConnected()) {
       const newRule = new Rule(payload);
       const saved = await newRule.save();
+      // Activate pipeline in RxJS Rule Engine
+      activateRule(saved);
       return res.status(201).json(saved);
     }
 
@@ -72,6 +75,8 @@ router.post('/', async (req, res) => {
       updatedAt: new Date().toISOString(),
     };
     inMemoryRules.unshift(created);
+    // Activate pipeline in RxJS Rule Engine
+    activateRule(created);
     res.status(201).json(created);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -96,7 +101,11 @@ router.put('/:id', async (req, res) => {
         },
         { new: true }
       );
-      if (updated) return res.json(updated);
+      if (updated) {
+        // Re-compile active pipeline in RxJS engine
+        activateRule(updated);
+        return res.json(updated);
+      }
     }
 
     const idx = inMemoryRules.findIndex((r) => r._id === req.params.id || r.id === req.params.id);
@@ -106,6 +115,8 @@ router.put('/:id', async (req, res) => {
         ...req.body,
         updatedAt: new Date().toISOString(),
       };
+      // Re-compile active pipeline in RxJS engine
+      activateRule(inMemoryRules[idx]);
       return res.json(inMemoryRules[idx]);
     }
 
@@ -122,6 +133,8 @@ router.delete('/:id', async (req, res) => {
       await Rule.findByIdAndDelete(req.params.id);
     }
     inMemoryRules = inMemoryRules.filter((r) => r._id !== req.params.id && r.id !== req.params.id);
+    // Deactivate pipeline in RxJS engine
+    deactivateRule(req.params.id);
     res.json({ success: true, message: 'Rule graph deleted successfully', id: req.params.id });
   } catch (err) {
     res.status(500).json({ error: err.message });

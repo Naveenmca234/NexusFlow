@@ -3,6 +3,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
 const { connectDB, getIsConnected } = require('./config/db');
+const { initEngine, getEngineStatus } = require('./engine/ruleEngine');
 
 // Load environment variables
 dotenv.config();
@@ -39,7 +40,13 @@ app.get('/api/health', (req, res) => {
     service: 'NexusFlow IoT Engine',
     timestamp: new Date().toISOString(),
     databaseConnected: getIsConnected(),
+    ruleEngine: getEngineStatus(),
   });
+});
+
+// Engine status endpoint
+app.get('/api/engine/status', (req, res) => {
+  res.json(getEngineStatus());
 });
 
 // Root welcome endpoint
@@ -98,6 +105,9 @@ const startServer = async () => {
   if (dbConnected) {
     await seedDatabaseIfEmpty();
   }
+
+  // Compile and initialize active RxJS rule pipelines
+  await initEngine();
 
   app.listen(PORT, () => {
     console.log(`====================================================`);
