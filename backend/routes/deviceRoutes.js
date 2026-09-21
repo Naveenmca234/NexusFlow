@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const Device = require('../models/Device');
 const { getIsConnected } = require('../config/db');
 const { sampleDevices } = require('../data/sampleData');
+const { broadcast } = require('../engine/socketServer');
 
 let inMemoryDevices = [...sampleDevices];
 
@@ -67,11 +68,23 @@ router.post('/', async (req, res) => {
     if (getIsConnected()) {
       const newDevice = new Device(payload);
       const saved = await newDevice.save();
+      broadcast('DEVICE_STATUS_UPDATE', {
+        action: 'created',
+        deviceId: saved.deviceId,
+        status: saved.status,
+        device: saved,
+      });
       return res.status(201).json(saved);
     }
 
     const created = { ...payload, _id: `dev-${Date.now()}` };
     inMemoryDevices.unshift(created);
+    broadcast('DEVICE_STATUS_UPDATE', {
+      action: 'created',
+      deviceId: created.deviceId,
+      status: created.status,
+      device: created,
+    });
     res.status(201).json(created);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -91,10 +104,48 @@ router.delete('/:id', async (req, res) => {
       }
     }
     inMemoryDevices = inMemoryDevices.filter(d => d._id !== req.params.id && d.deviceId !== req.params.id);
+    broadcast('DEVICE_STATUS_UPDATE', {
+      action: 'deleted',
+      deviceId: req.params.id,
+    });
     res.json({ success: true, message: 'Device deleted successfully', id: req.params.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+/**
+ * Helper to update device activity when telemetry arrives
+ */
+async function updateDeviceActivity(deviceId, timestamp, latestTelemetry) {
+  const ts = timestamp ? new Date(timestamp) : new Date();
+  if (getIsConnected()) {
+    try {
+      await Device.findOneAndUpdate(
+        { deviceId },
+        { status: 'online', lastActivity: ts, lastSeen: ts },
+        { new: true }
+      );
+    } catch (e) {
+      console.warn('[Device Update DB Warning]:', e.message);
+    }
+  }
+
+  const idx = inMemoryDevices.findIndex(d => d.deviceId === deviceId);
+  if (idx !== -1) {
+    inMemoryDevices[idx] = {
+      ...inMemoryDevices[idx],
+      status: 'online',
+      lastActivity: ts,
+      lastSeen: ts,
+      latestTelemetry: latestTelemetry || inMemoryDevices[idx].latestTelemetry,
+    };
+    return inMemoryDevices[idx];
+  }
+  return null;
+}
+
+router.updateDeviceActivity = updateDeviceActivity;
+router.getInMemoryDevices = () => inMemoryDevices;
 
 module.exports = router;

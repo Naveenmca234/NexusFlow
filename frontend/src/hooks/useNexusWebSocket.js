@@ -9,6 +9,7 @@ export function useNexusWebSocket() {
   const [lastTelemetry, setLastTelemetry] = useState(null);
   const [lastAlert, setLastAlert] = useState(null);
   const [lastRuleEvent, setLastRuleEvent] = useState(null);
+  const [lastDeviceStatus, setLastDeviceStatus] = useState(null);
   const [streamStatus, setStreamStatus] = useState({ isStreaming: false });
 
   const wsRef = useRef(null);
@@ -42,6 +43,10 @@ export function useNexusWebSocket() {
           switch (type) {
             case 'TELEMETRY_UPDATE':
               setLastTelemetry(payload);
+              break;
+
+            case 'DEVICE_STATUS_UPDATE':
+              setLastDeviceStatus(payload);
               break;
 
             case 'ALERT_TRIGGERED':
@@ -111,6 +116,7 @@ export function useNexusWebSocket() {
     lastTelemetry,
     lastAlert,
     lastRuleEvent,
+    lastDeviceStatus,
     streamStatus,
     sendMessage,
   };

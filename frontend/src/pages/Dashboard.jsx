@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Cpu, 
@@ -16,7 +16,14 @@ import {
   X,
   Zap,
   Gauge,
-  BellRing
+  BellRing,
+  Terminal,
+  Trash2,
+  Thermometer,
+  Wind,
+  RotateCw,
+  Vibrate,
+  CircleDot
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -39,7 +46,7 @@ import { useNexusWebSocket } from '../hooks/useNexusWebSocket';
 export default function Dashboard() {
   const [activeMetric, setActiveMetric] = useState('temperature');
   
-  // Dynamic dashboard states
+  // Dashboard Metrics & Datasets
   const [stats, setStats] = useState({
     totalDevices: mockDevices.length,
     onlineDevices: mockDevices.filter((d) => d.status === 'online').length,
@@ -51,6 +58,7 @@ export default function Dashboard() {
 
   const [chartData, setChartData] = useState(mockTelemetryChartData);
   const [recentAlerts, setRecentAlerts] = useState(mockAlerts);
+  const [devicesList, setDevicesList] = useState(mockDevices);
   const [enginePipelines, setEnginePipelines] = useState([]);
   const [mockStreamState, setMockStreamState] = useState({
     isStreaming: false,
@@ -59,6 +67,26 @@ export default function Dashboard() {
   });
   const [activeToasts, setActiveToasts] = useState([]);
   const [latestPacket, setLatestPacket] = useState(null);
+  
+  // Real-Time Activity Stream Feed
+  const [activityFeed, setActivityFeed] = useState([
+    {
+      id: 'init-1',
+      type: 'device',
+      title: 'Device Fleet Initialized',
+      subtitle: 'Fleet baseline monitoring active across 4 nodes',
+      timestamp: new Date().toLocaleTimeString(),
+    },
+    {
+      id: 'init-2',
+      type: 'rule',
+      title: 'RxJS Pipelines Active',
+      subtitle: 'Overheat & Vibration Interlocks armed',
+      timestamp: new Date().toLocaleTimeString(),
+    }
+  ]);
+
+  const activityTerminalRef = useRef(null);
 
   // Hook up WebSocket
   const {
@@ -66,34 +94,59 @@ export default function Dashboard() {
     lastTelemetry,
     lastAlert,
     lastRuleEvent,
+    lastDeviceStatus,
     streamStatus,
   } = useNexusWebSocket();
 
-  // Load initial stats, chart data, engine status, and mock stream status
+  // Helper to add activity log item
+  const pushActivity = (item) => {
+    setActivityFeed((prev) => [
+      {
+        id: `act-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        timestamp: new Date().toLocaleTimeString(),
+        ...item,
+      },
+      ...prev.slice(0, 30),
+    ]);
+  };
+
+  // Load initial data on mount
   useEffect(() => {
     async function loadInitialData() {
       try {
         const statsData = await api.getDashboardStats();
-        if (statsData?.summary) {
-          setStats(statsData.summary);
-        }
-        if (statsData?.recentAlerts?.length > 0) {
-          setRecentAlerts(statsData.recentAlerts);
-        }
+        if (statsData?.summary) setStats(statsData.summary);
+        if (statsData?.recentAlerts?.length > 0) setRecentAlerts(statsData.recentAlerts);
 
         const series = await api.getTelemetryChartSeries();
-        if (series?.length > 0) {
-          setChartData(series);
-        }
+        if (series?.length > 0) setChartData(series);
 
         const engineData = await api.getEngineStatus();
-        if (engineData?.pipelines) {
-          setEnginePipelines(engineData.pipelines);
-        }
+        if (engineData?.pipelines) setEnginePipelines(engineData.pipelines);
 
         const streamData = await api.getMockStreamStatus();
-        if (streamData) {
-          setMockStreamState(streamData);
+        if (streamData) setMockStreamState(streamData);
+
+        // Load devices and attach latest readings
+        const devices = await api.getDevices();
+        const latestReadings = await api.getLatestTelemetry();
+        
+        if (devices && devices.length > 0) {
+          const merged = devices.map((d) => {
+            const reading = Array.isArray(latestReadings) 
+              ? latestReadings.find((r) => r.deviceId === d.deviceId) 
+              : null;
+            return {
+              ...d,
+              latestTelemetry: reading || {
+                temperature: 24.5,
+                pressure: 1013.2,
+                rpm: 1800,
+                vibration: 0.18,
+              },
+            };
+          });
+          setDevicesList(merged);
         }
       } catch (err) {
         console.warn('Could not load initial API data:', err.message);
@@ -130,11 +183,80 @@ export default function Dashboard() {
       deviceId: lastTelemetry.deviceId,
     };
 
-    setChartData((prev) => {
-      const next = [...prev, formattedPoint];
-      return next.slice(-20); // Keep last 20 readings for smooth sliding window
+    setChartData((prev) => [...prev.slice(-19), formattedPoint]);
+
+    // Update specific device in the fleet list
+    setDevicesList((prev) =>
+      prev.map((dev) =>
+        dev.deviceId === lastTelemetry.deviceId
+          ? {
+              ...dev,
+              status: 'online',
+              lastActivity: 'Just now',
+              latestTelemetry: {
+                temperature: lastTelemetry.temperature,
+                pressure: lastTelemetry.pressure,
+                rpm: lastTelemetry.rpm,
+                vibration: lastTelemetry.vibration,
+              },
+              _flash: true,
+            }
+          : dev
+      )
+    );
+
+    // Push into real-time activity log
+    pushActivity({
+      type: 'telemetry',
+      title: `Telemetry Ingested: ${lastTelemetry.deviceId}`,
+      subtitle: `${lastTelemetry.temperature}°C • ${lastTelemetry.pressure} hPa • ${lastTelemetry.rpm} RPM • ${lastTelemetry.vibration}G`,
     });
   }, [lastTelemetry]);
+
+  // Handle incoming device status updates from WebSocket
+  useEffect(() => {
+    if (!lastDeviceStatus) return;
+
+    if (lastDeviceStatus.action === 'created' && lastDeviceStatus.device) {
+      setDevicesList((prev) => [lastDeviceStatus.device, ...prev]);
+      pushActivity({
+        type: 'device',
+        title: `New Device Registered: ${lastDeviceStatus.device.deviceId}`,
+        subtitle: `${lastDeviceStatus.device.name} (${lastDeviceStatus.device.type})`,
+      });
+      return;
+    }
+
+    if (lastDeviceStatus.action === 'deleted' && lastDeviceStatus.deviceId) {
+      setDevicesList((prev) => prev.filter((d) => d.deviceId !== lastDeviceStatus.deviceId));
+      pushActivity({
+        type: 'device',
+        title: `Device Removed: ${lastDeviceStatus.deviceId}`,
+        subtitle: 'Decommissioned from IoT fleet',
+      });
+      return;
+    }
+
+    if (lastDeviceStatus.deviceId) {
+      setDevicesList((prev) =>
+        prev.map((dev) =>
+          dev.deviceId === lastDeviceStatus.deviceId
+            ? {
+                ...dev,
+                status: lastDeviceStatus.status || dev.status,
+                lastActivity: 'Just now',
+                latestTelemetry: lastDeviceStatus.latestTelemetry || dev.latestTelemetry,
+              }
+            : dev
+        )
+      );
+      pushActivity({
+        type: 'device',
+        title: `Device Status: ${lastDeviceStatus.deviceId}`,
+        subtitle: `State: ${lastDeviceStatus.status || 'online'} • Ping acknowledged`,
+      });
+    }
+  }, [lastDeviceStatus]);
 
   // Handle incoming real-time alerts from WebSocket
   useEffect(() => {
@@ -165,6 +287,13 @@ export default function Dashboard() {
 
     setActiveToasts((prev) => [newToast, ...prev.slice(0, 2)]);
 
+    // Push into real-time activity log
+    pushActivity({
+      type: 'alert',
+      title: `🚨 ${lastAlert.title}`,
+      subtitle: `Target: ${lastAlert.deviceId} • Detected: ${lastAlert.valueDetected ?? 'N/A'}`,
+    });
+
     // Auto dismiss after 7 seconds
     const timer = setTimeout(() => {
       setActiveToasts((prev) => prev.filter((t) => t.id !== newToast.id));
@@ -189,6 +318,12 @@ export default function Dashboard() {
       }
       return copy;
     });
+
+    pushActivity({
+      type: 'rule',
+      title: `⚡ Rule Pipeline Fired`,
+      subtitle: `Rule: ${lastRuleEvent.ruleName || 'Visual Rule'} on ${lastRuleEvent.deviceId || 'device'}`,
+    });
   }, [lastRuleEvent]);
 
   // Handle mock sensor stream status from WebSocket
@@ -198,7 +333,7 @@ export default function Dashboard() {
     }
   }, [streamStatus]);
 
-  // Dismiss an alert toast
+  // Dismiss alert toast
   const dismissToast = (id) => {
     setActiveToasts((prev) => prev.filter((t) => t.id !== id));
   };
@@ -342,7 +477,7 @@ export default function Dashboard() {
             </div>
           </div>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-            Real-time sensory telemetry streaming and RxJS rule engine event processing.
+            Real-time sensory telemetry streaming, dynamic per-device metrics, and RxJS rule interlocks.
           </p>
         </div>
 
@@ -431,11 +566,11 @@ export default function Dashboard() {
         <div className="stat-card">
           <div>
             <div className="stat-label">Total Devices</div>
-            <div className="stat-value">{stats.totalDevices}</div>
+            <div className="stat-value">{devicesList.length}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.75rem', color: '#34d399' }}>
               <span className="status-dot online"></span>
-              <span>{stats.onlineDevices} Online</span>
-              <span style={{ color: 'var(--text-muted)' }}>• {stats.offlineDevices} Offline</span>
+              <span>{devicesList.filter((d) => d.status === 'online').length} Online</span>
+              <span style={{ color: 'var(--text-muted)' }}>• {devicesList.filter((d) => d.status !== 'online').length} Offline</span>
             </div>
           </div>
           <div className="stat-icon-wrapper" style={{ background: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4' }}>
@@ -538,7 +673,7 @@ export default function Dashboard() {
         </div>
 
         {/* Recharts Area Chart */}
-        <div style={{ width: '100%', height: 300 }}>
+        <div style={{ width: '100%', height: 280 }}>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <defs>
@@ -576,12 +711,156 @@ export default function Dashboard() {
                 dataKey={activeMetric} 
                 stroke={currentConfig.stroke} 
                 strokeWidth={2.5}
-                isAnimationActive={false} // Disable enter animation for instant real-time sliding
+                isAnimationActive={false}
                 fillOpacity={1} 
                 fill="url(#dashboardMetricGradient)" 
               />
             </AreaChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Grid: 1. Latest Telemetry Per Device (Fleet View) & 2. Real-Time Activity Panel */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.5rem' }}>
+        
+        {/* Latest Telemetry Value for Each Device */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Cpu size={18} color="var(--accent-cyan)" />
+                <h2 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#fff' }}>Device Fleet Status & Latest Telemetry</h2>
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                Real-time sensory readings by device with live status heartbeat
+              </p>
+            </div>
+            <Link to="/devices" className="btn btn-outline" style={{ fontSize: '0.75rem', padding: '0.35rem 0.75rem' }}>
+              <span>All Devices</span>
+              <ArrowUpRight size={13} />
+            </Link>
+          </div>
+
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Device</th>
+                  <th>Status</th>
+                  <th>Temperature</th>
+                  <th>Pressure</th>
+                  <th>RPM</th>
+                  <th>Vibration</th>
+                  <th>Last Seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {devicesList.map((dev) => {
+                  const t = dev.latestTelemetry?.temperature ?? '24.0';
+                  const p = dev.latestTelemetry?.pressure ?? '1013';
+                  const r = dev.latestTelemetry?.rpm ?? '1800';
+                  const v = dev.latestTelemetry?.vibration ?? '0.18';
+                  const isOnline = dev.status === 'online';
+
+                  return (
+                    <tr key={dev.deviceId || dev._id}>
+                      <td>
+                        <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.85rem' }}>{dev.name}</div>
+                        <div className="font-mono" style={{ fontSize: '0.7rem', color: 'var(--accent-cyan)' }}>
+                          {dev.deviceId}
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`badge badge-${isOnline ? 'online' : 'offline'}`}>
+                          <span className={isOnline ? 'pulse-dot-green' : 'pulse-dot-amber'}></span>
+                          {isOnline ? 'ONLINE' : 'OFFLINE'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="device-metric-pill" style={{ color: '#38bdf8' }}>
+                          <Thermometer size={12} />
+                          {t}°C
+                        </span>
+                      </td>
+                      <td>
+                        <span className="device-metric-pill" style={{ color: '#34d399' }}>
+                          <Wind size={12} />
+                          {p} hPa
+                        </span>
+                      </td>
+                      <td>
+                        <span className="device-metric-pill" style={{ color: '#a78bfa' }}>
+                          <RotateCw size={12} />
+                          {r}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="device-metric-pill" style={{ color: '#fbbf24' }}>
+                          <Vibrate size={12} />
+                          {v}G
+                        </span>
+                      </td>
+                      <td style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                        {dev.lastActivity || 'Just now'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Real-Time Activity Stream Panel */}
+        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Terminal size={18} color="var(--accent-emerald)" />
+                <h2 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#fff' }}>Real-Time Activity Feed</h2>
+                <span className="badge badge-online" style={{ fontSize: '0.68rem', padding: '0.15rem 0.45rem' }}>
+                  <span className="pulse-dot-green"></span>
+                  LIVE FEED
+                </span>
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                Chronological event terminal capturing telemetry packets, interlocks, and alerts
+              </p>
+            </div>
+            <button
+              onClick={() => setActivityFeed([])}
+              className="btn btn-outline"
+              style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem', color: 'var(--text-muted)' }}
+              title="Clear activity log"
+            >
+              <Trash2 size={13} />
+              <span>Clear</span>
+            </button>
+          </div>
+
+          <div className="activity-terminal" ref={activityTerminalRef} style={{ flex: 1, minHeight: '260px' }}>
+            {activityFeed.length > 0 ? (
+              activityFeed.map((item) => (
+                <div key={item.id} className={`activity-item ${item.type}`}>
+                  <div>
+                    <div style={{ color: '#f8fafc', fontWeight: 500 }}>
+                      {item.title}
+                    </div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: '0.1rem' }}>
+                      {item.subtitle}
+                    </div>
+                  </div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.68rem', marginLeft: '0.75rem', whiteSpace: 'nowrap' }}>
+                    {item.timestamp}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                Awaiting incoming real-time telemetry, rules, and alert events...
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -642,9 +921,19 @@ export default function Dashboard() {
                           borderRadius: '4px',
                           background: n.type === 'sensor' ? 'rgba(6, 182, 212, 0.15)' :
                                       n.type === 'filter' ? 'rgba(59, 130, 246, 0.15)' :
+                                      n.type === 'movingAverage' ? 'rgba(245, 158, 11, 0.15)' :
+                                      n.type === 'mathOperation' || n.type === 'math' ? 'rgba(56, 189, 248, 0.15)' :
+                                      n.type === 'threshold' ? 'rgba(236, 72, 153, 0.15)' :
+                                      n.type === 'and' ? 'rgba(16, 185, 129, 0.15)' :
+                                      n.type === 'or' ? 'rgba(245, 158, 11, 0.15)' :
                                       n.type === 'condition' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(244, 63, 94, 0.15)',
                           color: n.type === 'sensor' ? '#06b6d4' :
                                  n.type === 'filter' ? '#3b82f6' :
+                                 n.type === 'movingAverage' ? '#fbbf24' :
+                                 n.type === 'mathOperation' || n.type === 'math' ? '#38bdf8' :
+                                 n.type === 'threshold' ? '#f472b6' :
+                                 n.type === 'and' ? '#34d399' :
+                                 n.type === 'or' ? '#fbbf24' :
                                  n.type === 'condition' ? '#f59e0b' : '#f43f5e',
                           textTransform: 'uppercase',
                         }}

@@ -243,6 +243,33 @@ async function ingestTelemetry(inputData) {
   // 2. Real-time broadcast to connected WebSocket clients
   broadcast('TELEMETRY_UPDATE', normalized);
 
+  // 3. Update device status to online and broadcast DEVICE_STATUS_UPDATE
+  try {
+    const deviceRoutes = require('./deviceRoutes');
+    if (typeof deviceRoutes.updateDeviceActivity === 'function') {
+      deviceRoutes.updateDeviceActivity(normalized.deviceId, normalized.timestamp, {
+        temperature: normalized.temperature,
+        pressure: normalized.pressure,
+        rpm: normalized.rpm,
+        vibration: normalized.vibration,
+      });
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  broadcast('DEVICE_STATUS_UPDATE', {
+    deviceId: normalized.deviceId,
+    status: 'online',
+    lastActivity: normalized.timestamp,
+    latestTelemetry: {
+      temperature: normalized.temperature,
+      pressure: normalized.pressure,
+      rpm: normalized.rpm,
+      vibration: normalized.vibration,
+    },
+  });
+
   return normalized;
 }
 

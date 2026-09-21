@@ -987,4 +987,67 @@ code, pre, .font-mono {
   animation: flashRowAnim 2s ease-out;
 }
 
+/* ==========================================================================
+   Activity Stream Terminal & Device Metric Badges
+   ========================================================================== */
+
+.activity-terminal {
+  background: #090d16;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow-y: auto;
+  max-height: 280px;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.65rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 3px solid #38bdf8;
+  font-size: 0.75rem;
+  transition: background 0.15s ease;
+}
+
+.activity-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.activity-item.telemetry {
+  border-left-color: #06b6d4;
+}
+
+.activity-item.alert {
+  border-left-color: #f43f5e;
+  background: rgba(244, 63, 94, 0.08);
+}
+
+.activity-item.rule {
+  border-left-color: #8b5cf6;
+}
+
+.activity-item.device {
+  border-left-color: #10b981;
+}
+
+.device-metric-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  background: #090d16;
+  border: 1px solid var(--border-color);
+  font-size: 0.72rem;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+
 
