@@ -67,14 +67,35 @@ export const api = {
     return data || mockTelemetryChartData;
   },
 
-  async getTelemetryList(limit = 20) {
-    const data = await fetchJson(`/telemetry?limit=${limit}`);
+  async getTelemetryList(limit = 20, deviceId = null) {
+    const query = new URLSearchParams({ limit, ...(deviceId ? { deviceId } : {}) }).toString();
+    const data = await fetchJson(`/telemetry?${query}`);
     return data || mockTelemetryChartData.map((d, i) => ({
       _id: `tel-${i}`,
-      deviceId: 'DEV-TH-101',
+      deviceId: deviceId || 'DEV-TH-101',
       timestamp: new Date().toISOString(),
+      temperature: d.temperature ?? 24,
+      pressure: d.pressure ?? 1013,
+      rpm: 1850,
+      vibration: d.vibration ?? 0.2,
       metrics: d,
     }));
+  },
+
+  async postTelemetry(record) {
+    const res = await fetchJson('/telemetry', {
+      method: 'POST',
+      body: JSON.stringify(record),
+    });
+    return res || { ...record, _id: `tel-${Date.now()}` };
+  },
+
+  async generateMockTelemetry(deviceId = 'DEV-TH-101', count = 1) {
+    const res = await fetchJson('/telemetry/generate', {
+      method: 'POST',
+      body: JSON.stringify({ deviceId, count }),
+    });
+    return res;
   },
 
   // Rules

@@ -6,21 +6,31 @@ const telemetrySchema = new mongoose.Schema(
       type: String,
       required: true,
       index: true,
+      trim: true,
     },
     timestamp: {
       type: Date,
       default: Date.now,
       index: true,
     },
-    metrics: {
-      temperature: { type: Number },
-      humidity: { type: Number },
-      pressure: { type: Number },
-      vibration: { type: Number },
-      voltage: { type: Number },
-      battery: { type: Number },
+    temperature: {
+      type: Number,
+      default: 0,
     },
-    rawPayload: {
+    pressure: {
+      type: Number,
+      default: 0,
+    },
+    rpm: {
+      type: Number,
+      default: 0,
+    },
+    vibration: {
+      type: Number,
+      default: 0,
+    },
+    // Optional compatibility field
+    metrics: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
