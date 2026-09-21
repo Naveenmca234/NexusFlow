@@ -6,6 +6,10 @@ const alertSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: null,
     },
+    ruleName: {
+      type: String,
+      default: 'Visual Rule',
+    },
     deviceId: {
       type: String,
       required: true,
@@ -27,17 +31,25 @@ const alertSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['active', 'acknowledged', 'resolved'],
-      default: 'active',
+      enum: ['new', 'acknowledged', 'resolved', 'active'],
+      default: 'new',
       index: true,
     },
     valueDetected: {
       type: mongoose.Schema.Types.Mixed,
       default: null,
     },
+    triggerValue: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     threshold: {
       type: Number,
       default: null,
+    },
+    cooldownSeconds: {
+      type: Number,
+      default: 30,
     },
     timestamp: {
       type: Date,

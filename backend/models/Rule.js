@@ -31,6 +31,10 @@ const ruleSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    cooldownSeconds: {
+      type: Number,
+      default: 30,
+    },
     lastTriggered: {
       type: Date,
       default: null,

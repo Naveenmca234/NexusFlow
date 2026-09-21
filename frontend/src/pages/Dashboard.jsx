@@ -53,7 +53,7 @@ export default function Dashboard() {
     offlineDevices: mockDevices.filter((d) => d.status !== 'online').length,
     totalTelemetryRecords: 14280,
     activeRules: mockRules.filter((r) => r.enabled).length,
-    activeAlerts: mockAlerts.filter((a) => a.status === 'active').length,
+    activeAlerts: mockAlerts.filter((a) => a.status === 'active' || a.status === 'new').length,
   });
 
   const [chartData, setChartData] = useState(mockTelemetryChartData);

@@ -7,6 +7,7 @@ export default function AlertNode({ id, data }) {
   const [label] = useState(data.label || 'Incident Alert');
   const [severity, setSeverity] = useState(data.severity || 'warning');
   const [channel, setChannel] = useState(data.channel || 'Dashboard / Incident');
+  const [cooldown, setCooldown] = useState(data.cooldownSeconds ?? data.cooldown ?? 30);
 
   const handleDelete = (e) => {
     e.stopPropagation();
@@ -16,6 +17,7 @@ export default function AlertNode({ id, data }) {
   const updateConfig = (key, val) => {
     if (key === 'severity') setSeverity(val);
     if (key === 'channel') setChannel(val);
+    if (key === 'cooldownSeconds') setCooldown(val);
     setNodes((nds) =>
       nds.map((node) =>
         node.id === id ? { ...node, data: { ...node.data, [key]: val } } : node
@@ -73,6 +75,19 @@ export default function AlertNode({ id, data }) {
             <option value="SMS Alert">SMS Alert</option>
             <option value="Email">Email Digest</option>
           </select>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Cooldown (s):</label>
+          <input
+            type="number"
+            min="0"
+            max="3600"
+            value={cooldown}
+            onChange={(e) => updateConfig('cooldownSeconds', Math.max(0, parseInt(e.target.value, 10) || 0))}
+            className="node-field-input"
+            style={{ width: '65px', textAlign: 'right' }}
+          />
         </div>
       </div>
     </div>

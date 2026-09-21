@@ -2,7 +2,7 @@ const { filter, map, tap } = require('rxjs/operators');
 const Alert = require('../models/Alert');
 const Rule = require('../models/Rule');
 const { getIsConnected } = require('../config/db');
-const { broadcast } = require('./socketServer');
+const socketServer = require('./socketServer');
 
 /**
  * Basic comparison operator evaluator
@@ -95,12 +95,49 @@ function compileConditionNode(node) {
 }
 
 /**
+ * Alert Cooldown Tracker:
+ * Stores timestamp of last alert fired keyed by `${ruleKey}:${deviceKey}`
+ * Prevents alert flooding when metric persistently breaches threshold.
+ */
+const alertCooldownTracker = new Map();
+
+function resetAlertCooldowns() {
+  alertCooldownTracker.clear();
+}
+
+/**
  * Alert Node Handler:
- * Triggers alert event creation when incoming packet reaches the end of the pipeline
+ * Triggers alert event creation when incoming packet reaches the end of the pipeline.
+ * Respects configured cooldown period per rule and device.
  */
 function compileAlertNode(node, ruleContext) {
+  // Configurable cooldown period (in seconds)
+  // Priority: node.data.cooldownSeconds -> node.data.cooldown -> ruleContext.cooldownSeconds -> default 30s
+  const defaultCooldown = 30;
+  const configuredCooldown = Number(
+    node.data?.cooldownSeconds ?? node.data?.cooldown ?? ruleContext?.cooldownSeconds ?? defaultCooldown
+  );
+  const cooldownSeconds = isNaN(configuredCooldown) || configuredCooldown < 0 ? defaultCooldown : configuredCooldown;
+  const cooldownMs = cooldownSeconds * 1000;
+  const ruleKey = String(ruleContext?._id || ruleContext?.name || 'rule');
+
   return tap(async (packet) => {
     try {
+      const deviceId = packet.deviceId || 'DEV-TH-101';
+      const cooldownKey = `${ruleKey}:${deviceId}`;
+      const now = Date.now();
+      const lastFired = alertCooldownTracker.get(cooldownKey) || 0;
+
+      // Check if cooldown period is active
+      if (cooldownMs > 0 && (now - lastFired < cooldownMs)) {
+        const remainingSec = Math.ceil((cooldownMs - (now - lastFired)) / 1000);
+        // Suppress alert during cooldown
+        return;
+      }
+
+      // Record timestamp for cooldown
+      alertCooldownTracker.set(cooldownKey, now);
+
       const severity = node.data?.severity || 'warning';
       const label = node.data?.label || ruleContext?.name || 'Rule Alert';
       const field = node.data?.field || 'telemetry';
@@ -108,13 +145,16 @@ function compileAlertNode(node, ruleContext) {
 
       const alertPayload = {
         ruleId: ruleContext?._id || null,
-        deviceId: packet.deviceId || 'DEV-TH-101',
+        ruleName: ruleContext?.name || node.data?.ruleName || 'Visual Rule',
+        deviceId: deviceId,
         title: `${ruleContext?.name || 'Visual Rule'}: Threshold Exceeded`,
-        message: `${label}: Condition met on ${packet.deviceId}. Value detected: ${detectedVal}`,
+        message: `${label}: Condition met on ${deviceId}. Value detected: ${detectedVal}`,
         severity: ['info', 'warning', 'critical'].includes(severity) ? severity : 'warning',
-        status: 'active',
+        status: 'new',
         valueDetected: detectedVal,
+        triggerValue: detectedVal,
         threshold: node.data?.threshold ?? null,
+        cooldownSeconds,
         timestamp: new Date(),
       };
 
@@ -153,11 +193,11 @@ function compileAlertNode(node, ruleContext) {
         ruleContext.lastTriggered = new Date();
       }
 
-      console.log(`[RuleEngine Alert] 🚨 ${alertPayload.title} -> ${alertPayload.deviceId} (${alertPayload.severity})`);
+      console.log(`[RuleEngine Alert] 🚨 ${alertPayload.title} -> ${alertPayload.deviceId} (${alertPayload.severity}) [cooldown: ${cooldownSeconds}s]`);
 
       // Real-time WebSocket broadcasts
-      broadcast('ALERT_TRIGGERED', savedAlert);
-      broadcast('RULE_STATUS', {
+      socketServer.broadcast('ALERT_TRIGGERED', savedAlert);
+      socketServer.broadcast('RULE_STATUS', {
         ruleId: ruleContext?._id || ruleContext?.name || 'rule-1',
         ruleName: ruleContext?.name || 'Visual Rule',
         executionCount: ruleContext?.executionCount || 1,
@@ -429,4 +469,6 @@ module.exports = {
   compileThresholdNode,
   compileAndNode,
   compileOrNode,
+  alertCooldownTracker,
+  resetAlertCooldowns,
 };

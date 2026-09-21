@@ -69,6 +69,7 @@ function compileRuleGraph(ruleGraph, telemetrySource$) {
     _id: ruleGraph._id || ruleGraph.id,
     name: ruleGraph.name || 'Untitled Rule',
     targetDeviceId: ruleGraph.targetDeviceId || 'all',
+    cooldownSeconds: ruleGraph.cooldownSeconds !== undefined ? Number(ruleGraph.cooldownSeconds) : undefined,
   };
 
   // Order nodes by execution flow (Sensor -> Filter -> Condition -> Alert)

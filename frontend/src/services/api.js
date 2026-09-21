@@ -28,7 +28,7 @@ export const api = {
         offlineDevices: mockDevices.filter(d => d.status !== 'online').length,
         totalTelemetryRecords: 14280,
         activeRules: mockRules.filter(r => r.enabled).length,
-        activeAlerts: mockAlerts.filter(a => a.status === 'active').length,
+        activeAlerts: mockAlerts.filter(a => a.status === 'active' || a.status === 'new').length,
       },
       recentAlerts: mockAlerts,
       databaseConnected: false,
@@ -146,9 +146,42 @@ export const api = {
 
   // Alerts
   async getAlerts(params = {}) {
-    const query = new URLSearchParams(params).toString();
+    const cleanParams = {};
+    Object.keys(params).forEach((k) => {
+      if (params[k] !== undefined && params[k] !== null && params[k] !== 'all') {
+        cleanParams[k] = params[k];
+      }
+    });
+    const query = new URLSearchParams(cleanParams).toString();
     const data = await fetchJson(`/alerts${query ? `?${query}` : ''}`);
     return data || mockAlerts;
+  },
+
+  async getAlertById(id) {
+    const data = await fetchJson(`/alerts/${id}`);
+    return data || mockAlerts.find(a => a._id === id);
+  },
+
+  async acknowledgeAlert(id) {
+    const res = await fetchJson(`/alerts/${id}/acknowledge`, {
+      method: 'PATCH',
+    });
+    return res || { _id: id, status: 'acknowledged' };
+  },
+
+  async resolveAlert(id) {
+    const res = await fetchJson(`/alerts/${id}/resolve`, {
+      method: 'PATCH',
+    });
+    return res || { _id: id, status: 'resolved' };
+  },
+
+  async updateAlertStatus(id, status) {
+    const res = await fetchJson(`/alerts/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    return res || { _id: id, status };
   },
 
   // Engine & Mock Stream Controls
