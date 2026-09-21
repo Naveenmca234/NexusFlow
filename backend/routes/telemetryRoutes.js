@@ -4,6 +4,13 @@ const Telemetry = require('../models/Telemetry');
 const { getIsConnected } = require('../config/db');
 const { generateSingleTelemetry, generateTelemetryBatch } = require('../utils/telemetryGenerator');
 const { processTelemetry } = require('../engine/ruleEngine');
+const { broadcast } = require('../engine/socketServer');
+const {
+  startMockStream,
+  stopMockStream,
+  getMockStreamStatus,
+  setIngestionHandler,
+} = require('../engine/mockSensorStream');
 
 let inMemoryTelemetry = generateTelemetryBatch(25);
 
@@ -192,42 +199,60 @@ router.get('/:deviceId', async (req, res) => {
   }
 });
 
-// POST /api/telemetry - Ingest telemetry into MongoDB Time-Series collection
-router.post('/', async (req, res) => {
-  try {
-    const { deviceId, temperature, pressure, rpm, vibration, metrics, timestamp } = req.body;
-    if (!deviceId) {
-      return res.status(400).json({ error: 'deviceId is required' });
-    }
+// Core Telemetry Ingestion Processor:
+// 1. Persists to MongoDB Time-Series or in-memory fallback
+// 2. Evaluates active RxJS rule pipeline conditions
+// 3. Broadcasts real-time telemetry update over WebSocket
+async function ingestTelemetry(inputData) {
+  const { deviceId, temperature, pressure, rpm, vibration, metrics, timestamp } = inputData;
+  if (!deviceId) {
+    throw new Error('deviceId is required');
+  }
 
-    const payload = {
-      deviceId: deviceId.trim(),
-      timestamp: timestamp ? new Date(timestamp) : new Date(),
-      temperature: Number(temperature ?? metrics?.temperature ?? 0),
-      pressure: Number(pressure ?? metrics?.pressure ?? 0),
-      rpm: Number(rpm ?? metrics?.rpm ?? 0),
-      vibration: Number(vibration ?? metrics?.vibration ?? 0),
-      metrics: metrics || {},
-    };
+  const payload = {
+    deviceId: deviceId.trim(),
+    timestamp: timestamp ? new Date(timestamp) : new Date(),
+    temperature: Number(temperature ?? metrics?.temperature ?? 0),
+    pressure: Number(pressure ?? metrics?.pressure ?? 0),
+    rpm: Number(rpm ?? metrics?.rpm ?? 0),
+    vibration: Number(vibration ?? metrics?.vibration ?? 0),
+    metrics: metrics || {},
+  };
 
-    if (getIsConnected()) {
-      // Ingest directly into MongoDB Time-Series collection
-      const doc = new Telemetry(payload);
-      const saved = await doc.save();
-      const normalized = normalizeTelemetry(saved);
-      // Trigger real-time rule engine evaluation
-      processTelemetry(normalized);
-      return res.status(201).json(normalized);
-    }
+  let normalized = null;
 
+  if (getIsConnected()) {
+    const doc = new Telemetry(payload);
+    const saved = await doc.save();
+    normalized = normalizeTelemetry(saved);
+  } else {
     const created = {
       ...payload,
       _id: `tel-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     };
     inMemoryTelemetry.unshift(created);
-    const normalized = normalizeTelemetry(created);
-    // Trigger real-time rule engine evaluation
-    processTelemetry(normalized);
+    if (inMemoryTelemetry.length > 200) {
+      inMemoryTelemetry.pop();
+    }
+    normalized = normalizeTelemetry(created);
+  }
+
+  // 1. Evaluate through reactive RxJS rule engine pipeline
+  processTelemetry(normalized);
+
+  // 2. Real-time broadcast to connected WebSocket clients
+  broadcast('TELEMETRY_UPDATE', normalized);
+
+  return normalized;
+}
+
+// Connect background mock sensor stream to the core ingestion pipeline
+setIngestionHandler(ingestTelemetry);
+
+// POST /api/telemetry - Ingest telemetry into MongoDB Time-Series collection
+router.post('/', async (req, res) => {
+  try {
+    const normalized = await ingestTelemetry(req.body);
     res.status(201).json(normalized);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -243,19 +268,8 @@ router.post('/generate', async (req, res) => {
 
     for (let i = 0; i < num; i++) {
       const data = generateSingleTelemetry(deviceId);
-      if (getIsConnected()) {
-        const doc = new Telemetry(data);
-        const saved = await doc.save();
-        const norm = normalizeTelemetry(saved);
-        processTelemetry(norm);
-        generated.push(norm);
-      } else {
-        const created = { ...data, _id: `tel-${Date.now()}-${i}` };
-        inMemoryTelemetry.unshift(created);
-        const norm = normalizeTelemetry(created);
-        processTelemetry(norm);
-        generated.push(norm);
-      }
+      const normalized = await ingestTelemetry(data);
+      generated.push(normalized);
     }
 
     res.status(201).json({
@@ -267,4 +281,28 @@ router.post('/generate', async (req, res) => {
   }
 });
 
+// Continuous Mock Sensor Stream Controls
+// POST /api/telemetry/mock-stream/start
+router.post('/mock-stream/start', (req, res) => {
+  const { intervalMs, deviceId } = req.body || {};
+  const result = startMockStream({ intervalMs, deviceId });
+  res.json(result);
+});
+
+// POST /api/telemetry/mock-stream/stop
+router.post('/mock-stream/stop', (req, res) => {
+  const result = stopMockStream();
+  res.json(result);
+});
+
+// GET /api/telemetry/mock-stream/status
+router.get('/mock-stream/status', (req, res) => {
+  res.json(getMockStreamStatus());
+});
+
+module.exports = {
+  router,
+  ingestTelemetry,
+};
 module.exports = router;
+router.ingestTelemetry = ingestTelemetry;

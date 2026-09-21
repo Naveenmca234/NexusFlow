@@ -81,4 +81,13 @@ router.patch('/:id/status', async (req, res) => {
   }
 });
 
+function addAlertRecord(alert) {
+  inMemoryAlerts.unshift(alert);
+  if (inMemoryAlerts.length > 200) {
+    inMemoryAlerts.pop();
+  }
+}
+
+router.addAlertRecord = addAlertRecord;
+
 module.exports = router;

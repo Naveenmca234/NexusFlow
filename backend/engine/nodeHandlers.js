@@ -2,6 +2,7 @@ const { filter, map, tap } = require('rxjs/operators');
 const Alert = require('../models/Alert');
 const Rule = require('../models/Rule');
 const { getIsConnected } = require('../config/db');
+const { broadcast } = require('./socketServer');
 
 /**
  * Basic comparison operator evaluator
@@ -117,10 +118,12 @@ function compileAlertNode(node, ruleContext) {
         timestamp: new Date(),
       };
 
+      let savedAlert = alertPayload;
+
       // Persist alert in MongoDB if connected
       if (getIsConnected()) {
         const newAlert = new Alert(alertPayload);
-        await newAlert.save();
+        savedAlert = await newAlert.save();
 
         // Increment rule execution counter
         if (ruleContext?._id) {
@@ -129,9 +132,37 @@ function compileAlertNode(node, ruleContext) {
             lastTriggered: new Date(),
           });
         }
+      } else {
+        savedAlert = {
+          ...alertPayload,
+          _id: `alt-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        };
+        try {
+          const alertRoutes = require('../routes/alertRoutes');
+          if (typeof alertRoutes.addAlertRecord === 'function') {
+            alertRoutes.addAlertRecord(savedAlert);
+          }
+        } catch (e) {
+          // ignore cyclic require
+        }
+      }
+
+      // Update in-memory counter if present
+      if (ruleContext) {
+        ruleContext.executionCount = (ruleContext.executionCount || 0) + 1;
+        ruleContext.lastTriggered = new Date();
       }
 
       console.log(`[RuleEngine Alert] 🚨 ${alertPayload.title} -> ${alertPayload.deviceId} (${alertPayload.severity})`);
+
+      // Real-time WebSocket broadcasts
+      broadcast('ALERT_TRIGGERED', savedAlert);
+      broadcast('RULE_STATUS', {
+        ruleId: ruleContext?._id || ruleContext?.name || 'rule-1',
+        ruleName: ruleContext?.name || 'Visual Rule',
+        executionCount: ruleContext?.executionCount || 1,
+        lastTriggered: new Date().toISOString(),
+      });
     } catch (err) {
       console.error('[RuleEngine Alert Error]:', err.message);
     }

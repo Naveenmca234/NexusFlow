@@ -1,14 +1,17 @@
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
 const { connectDB, getIsConnected } = require('./config/db');
 const { initEngine, getEngineStatus } = require('./engine/ruleEngine');
+const { initWebSocketServer, getConnectedClientsCount } = require('./engine/socketServer');
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
 // Middleware
@@ -41,6 +44,11 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     databaseConnected: getIsConnected(),
     ruleEngine: getEngineStatus(),
+    webSocket: {
+      path: '/ws',
+      activeClients: getConnectedClientsCount(),
+      status: 'listening',
+    },
   });
 });
 
@@ -109,10 +117,14 @@ const startServer = async () => {
   // Compile and initialize active RxJS rule pipelines
   await initEngine();
 
-  app.listen(PORT, () => {
+  // Initialize Real-time WebSocket Server
+  initWebSocketServer(server);
+
+  server.listen(PORT, () => {
     console.log(`====================================================`);
     console.log(`🚀 NexusFlow Backend running at http://localhost:${PORT}`);
     console.log(`📡 Health Check: http://localhost:${PORT}/api/health`);
+    console.log(`⚡ WebSocket Stream: ws://localhost:${PORT}/ws`);
     console.log(`📊 Dashboard API: http://localhost:${PORT}/api/dashboard/stats`);
     console.log(`💾 Database Status: ${getIsConnected() ? 'MongoDB Connected' : 'In-Memory / Sample Mode'}`);
     console.log(`====================================================`);

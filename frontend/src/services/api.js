@@ -151,11 +151,27 @@ export const api = {
     return data || mockAlerts;
   },
 
-  async updateAlertStatus(id, status) {
-    const res = await fetchJson(`/alerts/${id}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status }),
+  // Engine & Mock Stream Controls
+  async getEngineStatus() {
+    const data = await fetchJson('/engine/status');
+    return data || { engine: 'RxJS Reactive IoT Engine', activePipelineCount: 0, pipelines: [] };
+  },
+
+  async startMockStream(config = {}) {
+    return await fetchJson('/telemetry/mock-stream/start', {
+      method: 'POST',
+      body: JSON.stringify(config),
     });
-    return res || { _id: id, status };
+  },
+
+  async stopMockStream() {
+    return await fetchJson('/telemetry/mock-stream/stop', {
+      method: 'POST',
+    });
+  },
+
+  async getMockStreamStatus() {
+    return await fetchJson('/telemetry/mock-stream/status');
   },
 };
+
