@@ -210,6 +210,61 @@ function compileAlertNode(node, ruleContext) {
 }
 
 /**
+ * Webhook Cooldown Tracker:
+ * Stores timestamp of last webhook execution keyed by `whk:${ruleKey}:${deviceKey}`
+ */
+const webhookCooldownTracker = new Map();
+
+function resetWebhookCooldowns() {
+  webhookCooldownTracker.clear();
+}
+
+/**
+ * Webhook Node Handler:
+ * Executes an HTTP webhook when rule condition evaluates to true.
+ * Records execution result, handles timeouts, and enforces cooldowns safely.
+ */
+function compileWebhookNode(node, ruleContext) {
+  const { executeWebhook } = require('./webhookExecutor');
+  const defaultCooldown = 10;
+  const configuredCooldown = Number(
+    node.data?.cooldownSeconds ?? node.data?.cooldown ?? ruleContext?.cooldownSeconds ?? defaultCooldown
+  );
+  const cooldownSeconds = isNaN(configuredCooldown) || configuredCooldown < 0 ? defaultCooldown : configuredCooldown;
+  const cooldownMs = cooldownSeconds * 1000;
+  const ruleKey = String(ruleContext?._id || ruleContext?.name || 'rule');
+
+  return tap(async (packet) => {
+    try {
+      const deviceId = packet.deviceId || 'DEV-TH-101';
+      const cooldownKey = `whk:${ruleKey}:${deviceId}`;
+      const now = Date.now();
+      const lastFired = webhookCooldownTracker.get(cooldownKey) || 0;
+
+      if (cooldownMs > 0 && (now - lastFired < cooldownMs)) {
+        // Cooldown active, suppress duplicate webhook execution
+        return;
+      }
+
+      webhookCooldownTracker.set(cooldownKey, now);
+
+      await executeWebhook(
+        {
+          url: node.data?.url || node.data?.webhookUrl,
+          method: node.data?.method || 'POST',
+          payload: node.data?.payload,
+          timeoutMs: node.data?.timeoutMs || 5000,
+        },
+        packet,
+        ruleContext
+      );
+    } catch (err) {
+      console.error('[RuleEngine Webhook Error]:', err.message);
+    }
+  });
+}
+
+/**
  * Moving Average Node Handler:
  * Calculates the moving average of the latest N telemetry values for a target field
  * and passes the calculated average to the next node in the pipeline.
@@ -448,6 +503,7 @@ const NODE_HANDLERS = {
   filter: compileFilterNode,
   condition: compileConditionNode,
   alert: compileAlertNode,
+  webhook: compileWebhookNode,
   movingAverage: compileMovingAverageNode,
   moving_average: compileMovingAverageNode,
   mathOperation: compileMathNode,
@@ -464,6 +520,7 @@ module.exports = {
   compileFilterNode,
   compileConditionNode,
   compileAlertNode,
+  compileWebhookNode,
   compileMovingAverageNode,
   compileMathNode,
   compileThresholdNode,
@@ -471,4 +528,6 @@ module.exports = {
   compileOrNode,
   alertCooldownTracker,
   resetAlertCooldowns,
+  webhookCooldownTracker,
+  resetWebhookCooldowns,
 };

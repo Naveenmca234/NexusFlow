@@ -184,6 +184,27 @@ export const api = {
     return res || { _id: id, status };
   },
 
+  // Webhooks
+  async getWebhookLogs(params = {}) {
+    const cleanParams = {};
+    Object.keys(params).forEach((k) => {
+      if (params[k] !== undefined && params[k] !== null && params[k] !== 'all') {
+        cleanParams[k] = params[k];
+      }
+    });
+    const query = new URLSearchParams(cleanParams).toString();
+    const data = await fetchJson(`/webhooks/logs${query ? `?${query}` : ''}`);
+    return Array.isArray(data) ? data : [];
+  },
+
+  async testWebhook(config) {
+    const res = await fetchJson('/webhooks/test', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+    return res || { success: false, statusText: 'Failed to dispatch test webhook' };
+  },
+
   // Engine & Mock Stream Controls
   async getEngineStatus() {
     const data = await fetchJson('/engine/status');

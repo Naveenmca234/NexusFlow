@@ -764,6 +764,14 @@ code, pre, .font-mono {
   color: #fb7185;
 }
 
+.node-webhook {
+  border-color: rgba(129, 140, 248, 0.6);
+  background: linear-gradient(180deg, rgba(129, 140, 248, 0.15) 0%, #111827 100%);
+}
+.node-webhook .node-header {
+  color: #818cf8;
+}
+
 .node-delete-btn {
   display: flex;
   align-items: center;

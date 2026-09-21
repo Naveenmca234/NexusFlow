@@ -28,12 +28,14 @@ const deviceRoutes = require('./routes/deviceRoutes');
 const telemetryRoutes = require('./routes/telemetryRoutes');
 const ruleRoutes = require('./routes/ruleRoutes');
 const alertRoutes = require('./routes/alertRoutes');
+const webhookRoutes = require('./routes/webhookRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 
 app.use('/api/devices', deviceRoutes);
 app.use('/api/telemetry', telemetryRoutes);
 app.use('/api/rules', ruleRoutes);
 app.use('/api/alerts', alertRoutes);
+app.use('/api/webhooks', webhookRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 
 // Health check

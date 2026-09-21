@@ -19,7 +19,9 @@ import AndNode from '../components/nodes/AndNode';
 import OrNode from '../components/nodes/OrNode';
 import ConditionNode from '../components/nodes/ConditionNode';
 import AlertNode from '../components/nodes/AlertNode';
+import WebhookNode from '../components/nodes/WebhookNode';
 import { api } from '../services/api';
+import { useNexusWebSocket } from '../hooks/useNexusWebSocket';
 import { 
   Plus, 
   RotateCcw, 
@@ -34,6 +36,8 @@ import {
   GitFork,
   GitBranch, 
   AlertTriangle,
+  Globe,
+  ScrollText,
   Info,
   Check,
   Save,
@@ -41,7 +45,11 @@ import {
   Code,
   Copy,
   X,
-  Sparkles
+  Sparkles,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  RefreshCw
 } from 'lucide-react';
 
 const initialNodes = [
@@ -112,6 +120,41 @@ function FlowCanvas() {
     fetchRulesList();
   }, []);
 
+  // Webhook Logs State
+  const [showLogsModal, setShowLogsModal] = useState(false);
+  const [webhookLogs, setWebhookLogs] = useState([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logFilter, setLogFilter] = useState('all');
+
+  const { lastWebhookEvent } = useNexusWebSocket();
+
+  const fetchWebhookLogs = async () => {
+    setLoadingLogs(true);
+    try {
+      const data = await api.getWebhookLogs();
+      setWebhookLogs(data || []);
+    } catch (e) {
+      console.error('Error fetching webhook logs:', e);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showLogsModal) {
+      fetchWebhookLogs();
+    }
+  }, [showLogsModal]);
+
+  useEffect(() => {
+    if (lastWebhookEvent) {
+      setWebhookLogs((prev) => {
+        if (prev.some(l => l._id && l._id === lastWebhookEvent._id)) return prev;
+        return [lastWebhookEvent, ...prev];
+      });
+    }
+  }, [lastWebhookEvent]);
+
   const nodeTypes = useMemo(() => ({
     sensor: SensorNode,
     filter: FilterNode,
@@ -124,6 +167,7 @@ function FlowCanvas() {
     or: OrNode,
     condition: ConditionNode,
     alert: AlertNode,
+    webhook: WebhookNode,
   }), []);
 
   const onConnect = useCallback(
@@ -169,7 +213,15 @@ function FlowCanvas() {
       case 'condition':
         return { label: 'Logic Condition', conditionType: 'AND', duration: '30s' };
       case 'alert':
-        return { label: 'Alert Dispatch', severity: 'warning', channel: 'Dashboard / Incident' };
+        return { label: 'Alert Dispatch', severity: 'warning', channel: 'Dashboard / Incident', cooldownSeconds: 30 };
+      case 'webhook':
+        return {
+          label: 'HTTP Webhook',
+          url: 'https://httpbin.org/post',
+          method: 'POST',
+          cooldownSeconds: 10,
+          payload: '{\n  "deviceId": "{{deviceId}}",\n  "temperature": "{{temperature}}",\n  "rule": "{{ruleName}}"\n}',
+        };
       default:
         return { label: 'Custom Node' };
     }
@@ -355,6 +407,16 @@ function FlowCanvas() {
           >
             <Code size={14} />
             <span>JSON Graph</span>
+          </button>
+
+          <button 
+            onClick={() => setShowLogsModal(true)} 
+            className="btn btn-secondary" 
+            style={{ fontSize: '0.75rem', padding: '0.45rem 0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', borderColor: 'rgba(129, 140, 248, 0.4)', color: '#818cf8' }}
+            title="Inspect real-time webhook execution logs"
+          >
+            <ScrollText size={14} />
+            <span>Webhook Logs</span>
           </button>
 
           <button 
@@ -614,6 +676,25 @@ function FlowCanvas() {
               </div>
               <Plus size={14} color="#64748b" />
             </div>
+
+            {/* 5. Webhook Action Node */}
+            <div
+              className="palette-node-item"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('application/reactflow', 'webhook');
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onClick={() => addNodeFromPalette('webhook')}
+              title="Click or drag onto canvas"
+            >
+              <Globe size={18} color="#818cf8" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: '#818cf8' }}>Webhook</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>HTTP callback dispatch</div>
+              </div>
+              <Plus size={14} color="#64748b" />
+            </div>
           </div>
 
           {/* Quick Guide Footnote */}
@@ -713,6 +794,239 @@ function FlowCanvas() {
               <pre className="font-mono" style={{ fontSize: '0.75rem', color: '#38bdf8', lineHeight: 1.5, margin: 0 }}>
                 {JSON.stringify(serializeGraph(), null, 2)}
               </pre>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Webhook Execution Logs Modal */}
+      {showLogsModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.82)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 220,
+        }}>
+          <div style={{
+            width: '92%',
+            maxWidth: '920px',
+            maxHeight: '88vh',
+            background: '#0d1322',
+            border: '1px solid #23314f',
+            borderRadius: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.95)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <ScrollText size={18} color="#818cf8" />
+                <div>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff', margin: 0 }}>Webhook Execution Logs</h3>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Real-time HTTP callback dispatch history from reactive pipelines</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {/* Filter buttons */}
+                <div style={{ display: 'flex', gap: '0.3rem', marginRight: '0.5rem' }}>
+                  {['all', 'success', 'failed'].map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setLogFilter(f)}
+                      style={{
+                        padding: '0.25rem 0.55rem',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        textTransform: 'capitalize',
+                        background: logFilter === f ? '#1e293b' : 'transparent',
+                        color: logFilter === f ? '#818cf8' : 'var(--text-secondary)',
+                        border: '1px solid',
+                        borderColor: logFilter === f ? '#818cf8' : 'var(--border-color)',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+
+                <button 
+                  onClick={fetchWebhookLogs} 
+                  className="btn btn-secondary" 
+                  style={{ fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}
+                  title="Refresh logs"
+                >
+                  <RefreshCw size={13} className={loadingLogs ? 'animate-spin' : ''} />
+                  <span>Refresh</span>
+                </button>
+                <button 
+                  onClick={() => setShowLogsModal(false)} 
+                  className="btn btn-outline" 
+                  style={{ padding: '0.35rem' }}
+                  aria-label="Close dialog"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Logs Table */}
+            <div style={{ padding: '1rem 1.5rem', overflowY: 'auto', flex: 1, background: '#090d16' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.78rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                    <th style={{ padding: '0.65rem 0.75rem', fontWeight: 600 }}>TRIGGER TIME</th>
+                    <th style={{ padding: '0.65rem 0.75rem', fontWeight: 600 }}>TARGET WEBHOOK URL</th>
+                    <th style={{ padding: '0.65rem 0.75rem', fontWeight: 600 }}>RULE / DEVICE</th>
+                    <th style={{ padding: '0.65rem 0.75rem', fontWeight: 600 }}>HTTP STATUS</th>
+                    <th style={{ padding: '0.65rem 0.75rem', fontWeight: 600 }}>OUTCOME</th>
+                    <th style={{ padding: '0.65rem 0.75rem', fontWeight: 600, textAlign: 'right' }}>LATENCY</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadingLogs ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                        <RefreshCw size={18} className="animate-spin" style={{ margin: '0 auto 0.5rem' }} />
+                        <div>Loading execution history...</div>
+                      </td>
+                    </tr>
+                  ) : webhookLogs.filter((l) => {
+                      if (logFilter === 'success') return l.success;
+                      if (logFilter === 'failed') return !l.success;
+                      return true;
+                    }).length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                        <Globe size={32} color="#818cf8" style={{ margin: '0 auto 0.6rem', opacity: 0.7 }} />
+                        <div style={{ color: '#fff', fontWeight: 600 }}>No Webhook Logs Found</div>
+                        <div style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                          Connect a Webhook node in your visual rule and trigger telemetry to record HTTP dispatches.
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    webhookLogs
+                      .filter((l) => {
+                        if (logFilter === 'success') return l.success;
+                        if (logFilter === 'failed') return !l.success;
+                        return true;
+                      })
+                      .map((log, idx) => (
+                        <tr 
+                          key={log._id || idx}
+                          style={{ 
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                            transition: 'background 0.15s ease',
+                          }}
+                        >
+                          <td style={{ padding: '0.65rem 0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                              <Clock size={11} />
+                              <span>
+                                {log.triggerTime
+                                  ? new Date(log.triggerTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                                  : 'Just now'}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td style={{ padding: '0.65rem 0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.65rem',
+                                  fontWeight: 700,
+                                  color: '#818cf8',
+                                  background: 'rgba(129, 140, 248, 0.15)',
+                                  padding: '0.15rem 0.4rem',
+                                  borderRadius: '4px',
+                                }}
+                              >
+                                {log.method || 'POST'}
+                              </span>
+                              <span
+                                className="font-mono"
+                                title={log.webhookUrl}
+                                style={{
+                                  maxWidth: '220px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  display: 'inline-block',
+                                  color: '#f8fafc',
+                                }}
+                              >
+                                {log.webhookUrl}
+                              </span>
+                            </div>
+                            {log.error && (
+                              <div style={{ fontSize: '0.68rem', color: '#fb7185', marginTop: '0.2rem' }}>
+                                Error: {log.error}
+                              </div>
+                            )}
+                          </td>
+
+                          <td style={{ padding: '0.65rem 0.75rem' }}>
+                            <div style={{ fontWeight: 600, color: '#e2e8f0' }}>{log.ruleName || 'Visual Rule'}</div>
+                            <div className="font-mono" style={{ fontSize: '0.7rem', color: 'var(--accent-cyan)' }}>
+                              {log.deviceId || 'DEV-N/A'}
+                            </div>
+                          </td>
+
+                          <td style={{ padding: '0.65rem 0.75rem' }}>
+                            <span
+                              className="font-mono"
+                              style={{
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                color: log.status >= 200 && log.status < 300 ? '#34d399' : '#fb7185',
+                              }}
+                            >
+                              {log.status ? `${log.status} ${log.statusText}` : log.statusText || 'Error'}
+                            </span>
+                          </td>
+
+                          <td style={{ padding: '0.65rem 0.75rem' }}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: '999px',
+                                background: log.success ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+                                color: log.success ? '#34d399' : '#fb7185',
+                                border: `1px solid ${log.success ? 'rgba(16, 185, 129, 0.35)' : 'rgba(244, 63, 94, 0.35)'}`,
+                              }}
+                            >
+                              {log.success ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
+                              {log.success ? 'Success' : 'Failed'}
+                            </span>
+                          </td>
+
+                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'right' }}>
+                            <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>
+                              {log.responseTimeMs ?? 0}ms
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
