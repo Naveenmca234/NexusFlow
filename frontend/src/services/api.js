@@ -67,12 +67,19 @@ export const api = {
     return data || mockTelemetryChartData;
   },
 
-  async getTelemetryList(limit = 20, deviceId = null) {
-    const query = new URLSearchParams({ limit, ...(deviceId ? { deviceId } : {}) }).toString();
-    const data = await fetchJson(`/telemetry?${query}`);
+  async getTelemetryList(options = {}) {
+    const params = typeof options === 'number' ? { limit: options } : options;
+    const cleanParams = {};
+    if (params.limit) cleanParams.limit = params.limit;
+    if (params.deviceId && params.deviceId !== 'all') cleanParams.deviceId = params.deviceId;
+    if (params.startTime) cleanParams.startTime = params.startTime;
+    if (params.endTime) cleanParams.endTime = params.endTime;
+
+    const query = new URLSearchParams(cleanParams).toString();
+    const data = await fetchJson(`/telemetry${query ? `?${query}` : ''}`);
     return data || mockTelemetryChartData.map((d, i) => ({
       _id: `tel-${i}`,
-      deviceId: deviceId || 'DEV-TH-101',
+      deviceId: params.deviceId || 'DEV-TH-101',
       timestamp: new Date().toISOString(),
       temperature: d.temperature ?? 24,
       pressure: d.pressure ?? 1013,
@@ -80,6 +87,11 @@ export const api = {
       vibration: d.vibration ?? 0.2,
       metrics: d,
     }));
+  },
+
+  async getLatestTelemetry() {
+    const data = await fetchJson('/telemetry/latest');
+    return data;
   },
 
   async postTelemetry(record) {

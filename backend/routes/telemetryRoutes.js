@@ -4,11 +4,11 @@ const Telemetry = require('../models/Telemetry');
 const { getIsConnected } = require('../config/db');
 const { generateSingleTelemetry, generateTelemetryBatch } = require('../utils/telemetryGenerator');
 
-let inMemoryTelemetry = generateTelemetryBatch(20);
+let inMemoryTelemetry = generateTelemetryBatch(25);
 
-// Helper to normalize telemetry records
+// Helper to normalize telemetry document for API response
 function normalizeTelemetry(doc) {
-  const t = doc.temperature ?? doc.metrics?.temperature ?? 24.5;
+  const t = doc.temperature ?? doc.metrics?.temperature ?? 24.0;
   const p = doc.pressure ?? doc.metrics?.pressure ?? 1013.2;
   const r = doc.rpm ?? doc.metrics?.rpm ?? 1800;
   const v = doc.vibration ?? doc.metrics?.vibration ?? 0.18;
@@ -30,14 +30,69 @@ function normalizeTelemetry(doc) {
   };
 }
 
-// GET /api/telemetry - Get recent telemetry records
+// Build query filter for Time-Series queries (by device and time range)
+function buildTelemetryFilter(params, query) {
+  const filter = {};
+  const deviceId = params.deviceId || query.deviceId;
+  if (deviceId && deviceId !== 'all') {
+    filter.deviceId = deviceId;
+  }
+
+  const start = query.startTime || query.from || query.startDate;
+  const end = query.endTime || query.to || query.endDate;
+
+  if (start || end) {
+    filter.timestamp = {};
+    if (start) {
+      const startDate = new Date(start);
+      if (!isNaN(startDate.getTime())) filter.timestamp.$gte = startDate;
+    }
+    if (end) {
+      const endDate = new Date(end);
+      if (!isNaN(endDate.getTime())) filter.timestamp.$lte = endDate;
+    }
+    // Clean empty timestamp filter if dates were invalid
+    if (Object.keys(filter.timestamp).length === 0) {
+      delete filter.timestamp;
+    }
+  }
+
+  return filter;
+}
+
+// Apply in-memory filtering for development fallback
+function filterInMemoryTelemetry(filter, limit = 50) {
+  let list = [...inMemoryTelemetry];
+
+  if (filter.deviceId) {
+    list = list.filter((item) => item.deviceId === filter.deviceId);
+  }
+
+  if (filter.timestamp) {
+    if (filter.timestamp.$gte) {
+      list = list.filter((item) => new Date(item.timestamp) >= filter.timestamp.$gte);
+    }
+    if (filter.timestamp.$lte) {
+      list = list.filter((item) => new Date(item.timestamp) <= filter.timestamp.$lte);
+    }
+  }
+
+  // Sort by latest readings
+  list.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  return list.slice(0, limit).map(normalizeTelemetry);
+}
+
+// ==========================================
+// API Routes
+// ==========================================
+
+// GET /api/telemetry - Retrieve telemetry readings (latest, by device, within time range)
 router.get('/', async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
-    const { deviceId } = req.query;
+    const filter = buildTelemetryFilter({}, req.query);
 
     if (getIsConnected()) {
-      const filter = deviceId ? { deviceId } : {};
       const records = await Telemetry.find(filter)
         .sort({ timestamp: -1 })
         .limit(limit);
@@ -46,17 +101,49 @@ router.get('/', async (req, res) => {
       }
     }
 
-    const filtered = deviceId
-      ? inMemoryTelemetry.filter((t) => t.deviceId === deviceId)
-      : inMemoryTelemetry;
-    return res.json(filtered.slice(0, limit).map(normalizeTelemetry));
+    return res.json(filterInMemoryTelemetry(filter, limit));
   } catch (err) {
-    console.error('Error fetching telemetry:', err);
+    console.error('Error querying telemetry:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/telemetry/series - Formatted timeseries for Recharts
+// GET /api/telemetry/latest - Get latest reading for each active device
+router.get('/latest', async (req, res) => {
+  try {
+    if (getIsConnected()) {
+      // MongoDB Time-Series aggregation to get latest reading per deviceId
+      const latestPerDevice = await Telemetry.aggregate([
+        { $sort: { timestamp: -1 } },
+        {
+          $group: {
+            _id: '$deviceId',
+            latestRecord: { $first: '$$ROOT' },
+          },
+        },
+        { $replaceRoot: { newRoot: '$latestRecord' } },
+      ]);
+
+      if (latestPerDevice.length > 0) {
+        return res.json(latestPerDevice.map(normalizeTelemetry));
+      }
+    }
+
+    // In-memory fallback: latest per device
+    const deviceMap = new Map();
+    const sorted = [...inMemoryTelemetry].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    for (const record of sorted) {
+      if (!deviceMap.has(record.deviceId)) {
+        deviceMap.set(record.deviceId, normalizeTelemetry(record));
+      }
+    }
+    return res.json(Array.from(deviceMap.values()));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/telemetry/series - Formatted timeseries dataset for Recharts
 router.get('/series', async (req, res) => {
   try {
     let records = [];
@@ -83,14 +170,14 @@ router.get('/series', async (req, res) => {
   }
 });
 
-// GET /api/telemetry/:deviceId - Get telemetry records for a specific device
+// GET /api/telemetry/:deviceId - Retrieve readings for a specific device (supports time range query)
 router.get('/:deviceId', async (req, res) => {
   try {
-    const { deviceId } = req.params;
     const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const filter = buildTelemetryFilter(req.params, req.query);
 
     if (getIsConnected()) {
-      const records = await Telemetry.find({ deviceId })
+      const records = await Telemetry.find(filter)
         .sort({ timestamp: -1 })
         .limit(limit);
       if (records.length > 0) {
@@ -98,14 +185,13 @@ router.get('/:deviceId', async (req, res) => {
       }
     }
 
-    const filtered = inMemoryTelemetry.filter((t) => t.deviceId === deviceId);
-    return res.json(filtered.slice(0, limit).map(normalizeTelemetry));
+    return res.json(filterInMemoryTelemetry(filter, limit));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/telemetry - Ingest a new telemetry record
+// POST /api/telemetry - Ingest telemetry into MongoDB Time-Series collection
 router.post('/', async (req, res) => {
   try {
     const { deviceId, temperature, pressure, rpm, vibration, metrics, timestamp } = req.body;
@@ -124,6 +210,7 @@ router.post('/', async (req, res) => {
     };
 
     if (getIsConnected()) {
+      // Ingest directly into MongoDB Time-Series collection
       const doc = new Telemetry(payload);
       const saved = await doc.save();
       return res.status(201).json(normalizeTelemetry(saved));
@@ -140,11 +227,11 @@ router.post('/', async (req, res) => {
   }
 });
 
-// POST /api/telemetry/generate - Trigger mock telemetry generation
+// POST /api/telemetry/generate - Helper endpoint to generate mock telemetry for testing
 router.post('/generate', async (req, res) => {
   try {
     const { deviceId, count = 1 } = req.body;
-    const num = Math.min(Number(count) || 1, 20);
+    const num = Math.min(Number(count) || 1, 25);
     const generated = [];
 
     for (let i = 0; i < num; i++) {
@@ -161,7 +248,7 @@ router.post('/generate', async (req, res) => {
     }
 
     res.status(201).json({
-      message: `Generated ${num} mock telemetry record(s)`,
+      message: `Generated ${num} mock Time-Series telemetry record(s)`,
       records: generated,
     });
   } catch (err) {

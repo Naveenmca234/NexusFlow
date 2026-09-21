@@ -2,6 +2,31 @@ const mongoose = require('mongoose');
 
 let isConnected = false;
 
+/**
+ * Configure / verify MongoDB Time-Series collection for telemetry
+ * timeField: timestamp, metaField: deviceId
+ */
+const initTimeSeriesCollection = async (connection) => {
+  try {
+    const db = connection.db;
+    const collections = await db.listCollections({ name: 'telemetries' }).toArray();
+    if (collections.length === 0) {
+      await db.createCollection('telemetries', {
+        timeseries: {
+          timeField: 'timestamp',
+          metaField: 'deviceId',
+          granularity: 'seconds',
+        },
+      });
+      console.log('[MongoDB Time-Series] Collection "telemetries" created (timeField: timestamp, metaField: deviceId)');
+    } else {
+      console.log('[MongoDB Time-Series] Telemetry collection verified.');
+    }
+  } catch (err) {
+    console.warn('[MongoDB Time-Series Warning] Configuration note:', err.message);
+  }
+};
+
 const connectDB = async () => {
   const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/nexusflow';
   try {
@@ -10,6 +35,7 @@ const connectDB = async () => {
     });
     isConnected = true;
     console.log(`[MongoDB] Connected to database: ${conn.connection.host}`);
+    await initTimeSeriesCollection(conn.connection);
     return true;
   } catch (error) {
     isConnected = false;

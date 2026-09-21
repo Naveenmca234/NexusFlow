@@ -29,14 +29,24 @@ export default function Telemetry() {
   const [loading, setLoading] = useState(true);
   const [selectedDevice, setSelectedDevice] = useState('all');
   const [selectedMetric, setSelectedMetric] = useState('all');
+  const [timeRange, setTimeRange] = useState('all');
   const [generating, setGenerating] = useState(false);
 
   const loadTelemetryData = async () => {
     setLoading(true);
     try {
       const deviceParam = selectedDevice === 'all' ? null : selectedDevice;
+      let startTime = null;
+      if (timeRange === '15m') {
+        startTime = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      } else if (timeRange === '1h') {
+        startTime = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      } else if (timeRange === '24h') {
+        startTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      }
+
       const [list, series] = await Promise.all([
-        api.getTelemetryList(20, deviceParam),
+        api.getTelemetryList({ limit: 25, deviceId: deviceParam, startTime }),
         api.getTelemetryChartSeries(),
       ]);
       setTelemetry(list || []);
@@ -50,7 +60,7 @@ export default function Telemetry() {
 
   useEffect(() => {
     loadTelemetryData();
-  }, [selectedDevice]);
+  }, [selectedDevice, timeRange]);
 
   const handleGenerateMock = async () => {
     setGenerating(true);
@@ -127,6 +137,35 @@ export default function Telemetry() {
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
+        </div>
+
+        {/* Time Range Filter Toggle */}
+        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Range:</span>
+          {[
+            { id: 'all', label: 'All' },
+            { id: '15m', label: '15m' },
+            { id: '1h', label: '1h' },
+            { id: '24h', label: '24h' }
+          ].map((r) => (
+            <button
+              key={r.id}
+              onClick={() => setTimeRange(r.id)}
+              style={{
+                padding: '0.3rem 0.55rem',
+                fontSize: '0.7rem',
+                fontWeight: 600,
+                background: timeRange === r.id ? '#1e293b' : 'transparent',
+                color: timeRange === r.id ? '#34d399' : 'var(--text-secondary)',
+                border: '1px solid',
+                borderColor: timeRange === r.id ? '#34d399' : 'var(--border-color)',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              {r.label}
+            </button>
+          ))}
         </div>
 
         {/* Metric selection toggle */}

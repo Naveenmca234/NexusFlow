@@ -1,17 +1,21 @@
 const mongoose = require('mongoose');
 
+/**
+ * MongoDB Time-Series Telemetry Model
+ * timeField: timestamp
+ * metaField: deviceId
+ */
 const telemetrySchema = new mongoose.Schema(
   {
-    deviceId: {
-      type: String,
-      required: true,
-      index: true,
-      trim: true,
-    },
     timestamp: {
       type: Date,
       default: Date.now,
-      index: true,
+      required: true,
+    },
+    deviceId: {
+      type: String,
+      required: true,
+      trim: true,
     },
     temperature: {
       type: Number,
@@ -29,13 +33,18 @@ const telemetrySchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    // Optional compatibility field
     metrics: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
   },
-  { timestamps: true }
+  {
+    timeseries: {
+      timeField: 'timestamp',
+      metaField: 'deviceId',
+      granularity: 'seconds',
+    },
+  }
 );
 
 module.exports = mongoose.model('Telemetry', telemetrySchema);
