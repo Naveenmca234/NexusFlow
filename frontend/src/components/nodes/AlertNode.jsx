@@ -3,7 +3,7 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { AlertTriangle, X } from 'lucide-react';
 
 export default function AlertNode({ id, data }) {
-  const { deleteElements } = useReactFlow();
+  const { deleteElements, setNodes } = useReactFlow();
   const [label] = useState(data.label || 'Incident Alert');
   const [severity, setSeverity] = useState(data.severity || 'warning');
   const [channel, setChannel] = useState(data.channel || 'Dashboard / Incident');
@@ -11,6 +11,16 @@ export default function AlertNode({ id, data }) {
   const handleDelete = (e) => {
     e.stopPropagation();
     deleteElements({ nodes: [{ id }] });
+  };
+
+  const updateConfig = (key, val) => {
+    if (key === 'severity') setSeverity(val);
+    if (key === 'channel') setChannel(val);
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === id ? { ...node, data: { ...node.data, [key]: val } } : node
+      )
+    );
   };
 
   return (
@@ -42,7 +52,7 @@ export default function AlertNode({ id, data }) {
           <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Severity:</label>
           <select
             value={severity}
-            onChange={(e) => setSeverity(e.target.value)}
+            onChange={(e) => updateConfig('severity', e.target.value)}
             className="node-field-select"
           >
             <option value="critical">Critical</option>
@@ -55,7 +65,7 @@ export default function AlertNode({ id, data }) {
           <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Channel:</label>
           <select
             value={channel}
-            onChange={(e) => setChannel(e.target.value)}
+            onChange={(e) => updateConfig('channel', e.target.value)}
             className="node-field-select"
           >
             <option value="Dashboard / Incident">Dashboard</option>

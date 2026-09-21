@@ -3,14 +3,24 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { Cpu, X } from 'lucide-react';
 
 export default function SensorNode({ id, data }) {
-  const { deleteElements } = useReactFlow();
-  const [label, setLabel] = useState(data.label || 'Sensor Input');
+  const { deleteElements, setNodes } = useReactFlow();
+  const [label] = useState(data.label || 'Sensor Input');
   const [metric, setMetric] = useState(data.metric || 'temperature');
   const [interval, setIntervalVal] = useState(data.interval || '2s');
 
   const handleDelete = (e) => {
     e.stopPropagation();
     deleteElements({ nodes: [{ id }] });
+  };
+
+  const updateConfig = (key, val) => {
+    if (key === 'metric') setMetric(val);
+    if (key === 'interval') setIntervalVal(val);
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === id ? { ...node, data: { ...node.data, [key]: val } } : node
+      )
+    );
   };
 
   return (
@@ -35,7 +45,7 @@ export default function SensorNode({ id, data }) {
           <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Metric:</label>
           <select
             value={metric}
-            onChange={(e) => setMetric(e.target.value)}
+            onChange={(e) => updateConfig('metric', e.target.value)}
             className="node-field-select"
           >
             <option value="temperature">Temperature (°C)</option>
@@ -49,7 +59,7 @@ export default function SensorNode({ id, data }) {
           <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Interval:</label>
           <select
             value={interval}
-            onChange={(e) => setIntervalVal(e.target.value)}
+            onChange={(e) => updateConfig('interval', e.target.value)}
             className="node-field-select"
           >
             <option value="1s">1 second</option>

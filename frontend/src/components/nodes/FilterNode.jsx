@@ -3,7 +3,7 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { Filter, X } from 'lucide-react';
 
 export default function FilterNode({ id, data }) {
-  const { deleteElements } = useReactFlow();
+  const { deleteElements, setNodes } = useReactFlow();
   const [label] = useState(data.label || 'Threshold Filter');
   const [field, setField] = useState(data.field || 'temperature');
   const [operator, setOperator] = useState(data.operator || '>');
@@ -12,6 +12,17 @@ export default function FilterNode({ id, data }) {
   const handleDelete = (e) => {
     e.stopPropagation();
     deleteElements({ nodes: [{ id }] });
+  };
+
+  const updateConfig = (key, val) => {
+    if (key === 'field') setField(val);
+    if (key === 'operator') setOperator(val);
+    if (key === 'threshold') setThreshold(val);
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === id ? { ...node, data: { ...node.data, [key]: val } } : node
+      )
+    );
   };
 
   return (
@@ -43,7 +54,7 @@ export default function FilterNode({ id, data }) {
           <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Field:</label>
           <select
             value={field}
-            onChange={(e) => setField(e.target.value)}
+            onChange={(e) => updateConfig('field', e.target.value)}
             className="node-field-select"
           >
             <option value="temperature">Temperature</option>
@@ -58,7 +69,7 @@ export default function FilterNode({ id, data }) {
           <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
             <select
               value={operator}
-              onChange={(e) => setOperator(e.target.value)}
+              onChange={(e) => updateConfig('operator', e.target.value)}
               className="node-field-select"
               style={{ width: '45px' }}
             >
@@ -71,7 +82,7 @@ export default function FilterNode({ id, data }) {
             <input
               type="number"
               value={threshold}
-              onChange={(e) => setThreshold(Number(e.target.value))}
+              onChange={(e) => updateConfig('threshold', Number(e.target.value))}
               className="node-field-input"
               style={{ width: '55px' }}
             />

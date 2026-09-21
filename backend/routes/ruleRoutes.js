@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Rule = require('../models/Rule');
 const { getIsConnected } = require('../config/db');
 const { sampleRules } = require('../data/sampleData');
 
 let inMemoryRules = JSON.parse(JSON.stringify(sampleRules));
 
-// GET all rules
+// GET /api/rules - Retrieve all serialized rule graphs
 router.get('/', async (req, res) => {
   try {
     if (getIsConnected()) {
@@ -20,33 +21,40 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET single rule
+// GET /api/rules/:id - Retrieve single serialized rule graph by ID
 router.get('/:id', async (req, res) => {
   try {
-    if (getIsConnected()) {
+    if (getIsConnected() && mongoose.Types.ObjectId.isValid(req.params.id)) {
       const rule = await Rule.findById(req.params.id);
       if (rule) return res.json(rule);
     }
-    const found = inMemoryRules.find(r => r._id === req.params.id);
+
+    const found = inMemoryRules.find((r) => r._id === req.params.id || r.id === req.params.id);
     if (found) return res.json(found);
-    return res.status(404).json({ message: 'Rule not found' });
+
+    return res.status(404).json({ error: 'Rule not found' });
   } catch (err) {
-    const found = inMemoryRules.find(r => r._id === req.params.id);
+    const found = inMemoryRules.find((r) => r._id === req.params.id || r.id === req.params.id);
     if (found) return res.json(found);
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST create rule
+// POST /api/rules - Create and serialize a new rule graph
 router.post('/', async (req, res) => {
   try {
+    const { name, description, enabled, nodes, edges, targetDeviceId } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Rule name is required' });
+    }
+
     const payload = {
-      name: req.body.name || 'Untitled Rule',
-      description: req.body.description || '',
-      enabled: req.body.enabled !== undefined ? req.body.enabled : true,
-      nodes: req.body.nodes || [],
-      edges: req.body.edges || [],
-      targetDeviceId: req.body.targetDeviceId || 'all',
+      name: name.trim(),
+      description: description || '',
+      enabled: enabled !== undefined ? enabled : true,
+      nodes: Array.isArray(nodes) ? nodes : [],
+      edges: Array.isArray(edges) ? edges : [],
+      targetDeviceId: targetDeviceId || 'all',
       executionCount: 0,
       lastTriggered: null,
     };
@@ -57,7 +65,12 @@ router.post('/', async (req, res) => {
       return res.status(201).json(saved);
     }
 
-    const created = { ...payload, _id: `rule-${Date.now()}` };
+    const created = {
+      ...payload,
+      _id: `rule-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
     inMemoryRules.unshift(created);
     res.status(201).json(created);
   } catch (err) {
@@ -65,56 +78,51 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT update rule (graph updates)
+// PUT /api/rules/:id - Update serialized rule graph (nodes, edges, configuration)
 router.put('/:id', async (req, res) => {
   try {
-    if (getIsConnected()) {
-      const updated = await Rule.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const { name, description, enabled, nodes, edges, targetDeviceId } = req.body;
+
+    if (getIsConnected() && mongoose.Types.ObjectId.isValid(req.params.id)) {
+      const updated = await Rule.findByIdAndUpdate(
+        req.params.id,
+        {
+          ...(name && { name: name.trim() }),
+          ...(description !== undefined && { description }),
+          ...(enabled !== undefined && { enabled }),
+          ...(nodes && { nodes }),
+          ...(edges && { edges }),
+          ...(targetDeviceId && { targetDeviceId }),
+        },
+        { new: true }
+      );
       if (updated) return res.json(updated);
     }
 
-    const idx = inMemoryRules.findIndex(r => r._id === req.params.id);
+    const idx = inMemoryRules.findIndex((r) => r._id === req.params.id || r.id === req.params.id);
     if (idx !== -1) {
-      inMemoryRules[idx] = { ...inMemoryRules[idx], ...req.body, updatedAt: new Date() };
+      inMemoryRules[idx] = {
+        ...inMemoryRules[idx],
+        ...req.body,
+        updatedAt: new Date().toISOString(),
+      };
       return res.json(inMemoryRules[idx]);
     }
-    res.status(404).json({ message: 'Rule not found' });
+
+    res.status(404).json({ error: 'Rule not found' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// PATCH toggle rule status
-router.patch('/:id/toggle', async (req, res) => {
-  try {
-    if (getIsConnected()) {
-      const rule = await Rule.findById(req.params.id);
-      if (rule) {
-        rule.enabled = !rule.enabled;
-        await rule.save();
-        return res.json(rule);
-      }
-    }
-
-    const rule = inMemoryRules.find(r => r._id === req.params.id);
-    if (rule) {
-      rule.enabled = !rule.enabled;
-      return res.json(rule);
-    }
-    res.status(404).json({ message: 'Rule not found' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// DELETE rule
+// DELETE /api/rules/:id - Delete a serialized rule graph
 router.delete('/:id', async (req, res) => {
   try {
-    if (getIsConnected()) {
+    if (getIsConnected() && mongoose.Types.ObjectId.isValid(req.params.id)) {
       await Rule.findByIdAndDelete(req.params.id);
     }
-    inMemoryRules = inMemoryRules.filter(r => r._id !== req.params.id);
-    res.json({ success: true, message: 'Rule deleted' });
+    inMemoryRules = inMemoryRules.filter((r) => r._id !== req.params.id && r.id !== req.params.id);
+    res.json({ success: true, message: 'Rule graph deleted successfully', id: req.params.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

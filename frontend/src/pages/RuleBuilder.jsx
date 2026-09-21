@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -14,6 +14,7 @@ import SensorNode from '../components/nodes/SensorNode';
 import FilterNode from '../components/nodes/FilterNode';
 import ConditionNode from '../components/nodes/ConditionNode';
 import AlertNode from '../components/nodes/AlertNode';
+import { api } from '../services/api';
 import { 
   Plus, 
   RotateCcw, 
@@ -24,30 +25,36 @@ import {
   GitBranch, 
   AlertTriangle,
   Info,
-  Check
+  Check,
+  Save,
+  FolderOpen,
+  Code,
+  Copy,
+  X,
+  Sparkles
 } from 'lucide-react';
 
 const initialNodes = [
   {
-    id: 'node-1',
+    id: 'sensor-1',
     type: 'sensor',
     position: { x: 40, y: 140 },
     data: { label: 'Thermal Sensor 102', metric: 'temperature', interval: '2s' },
   },
   {
-    id: 'node-2',
+    id: 'filter-2',
     type: 'filter',
     position: { x: 300, y: 140 },
     data: { label: 'Threshold Filter', field: 'temperature', operator: '>', threshold: 32 },
   },
   {
-    id: 'node-3',
+    id: 'condition-3',
     type: 'condition',
     position: { x: 560, y: 140 },
     data: { label: 'Sustained State', conditionType: 'AND', duration: '60s' },
   },
   {
-    id: 'node-4',
+    id: 'alert-4',
     type: 'alert',
     position: { x: 820, y: 140 },
     data: { label: 'Incident Dispatch', severity: 'critical', channel: 'Ops Pager' },
@@ -55,20 +62,45 @@ const initialNodes = [
 ];
 
 const initialEdges = [
-  { id: 'e1-2', source: 'node-1', target: 'node-2', animated: true, style: { stroke: '#06b6d4', strokeWidth: 2 } },
-  { id: 'e2-3', source: 'node-2', target: 'node-3', animated: true, style: { stroke: '#8b5cf6', strokeWidth: 2 } },
-  { id: 'e3-4', source: 'node-3', target: 'node-4', animated: true, style: { stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'e1-2', source: 'sensor-1', target: 'filter-2', animated: true, style: { stroke: '#06b6d4', strokeWidth: 2 } },
+  { id: 'e2-3', source: 'filter-2', target: 'condition-3', animated: true, style: { stroke: '#8b5cf6', strokeWidth: 2 } },
+  { id: 'e3-4', source: 'condition-3', target: 'alert-4', animated: true, style: { stroke: '#f59e0b', strokeWidth: 2 } },
 ];
 
-let idCounter = 5;
+let idCounter = 10;
 const getId = (type) => `${type}-${Date.now()}-${idCounter++}`;
 
 function FlowCanvas() {
   const reactFlowWrapper = useRef(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const { screenToFlowPosition, fitView } = useReactFlow();
+
+  // Rule Metadata State
+  const [savedRules, setSavedRules] = useState([]);
+  const [currentRuleId, setCurrentRuleId] = useState(null);
+  const [ruleName, setRuleName] = useState('Thermal Spike Alert Pipeline');
+  const [ruleDescription, setRuleDescription] = useState('Flags when temperature exceeds 32°C for over 60 seconds');
+  const [targetDevice, setTargetDevice] = useState('DEV-TH-102');
+  
+  // Feedback & Modal State
   const [saveStatus, setSaveStatus] = useState('');
-  const { screenToFlowPosition } = useReactFlow();
+  const [showJsonModal, setShowJsonModal] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Load saved rules list on mount
+  const fetchRulesList = async () => {
+    try {
+      const data = await api.getRules();
+      setSavedRules(data || []);
+    } catch (err) {
+      console.error('Error fetching rules list:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchRulesList();
+  }, []);
 
   const nodeTypes = useMemo(() => ({
     sensor: SensorNode,
@@ -137,9 +169,88 @@ function FlowCanvas() {
     setNodes((nds) => nds.concat(newNode));
   };
 
+  // Serialize React Flow graph into standardized JSON representation
+  const serializeGraph = () => {
+    return {
+      name: ruleName.trim() || 'Untitled Rule Graph',
+      description: ruleDescription.trim(),
+      enabled: true,
+      targetDeviceId: targetDevice,
+      nodes: nodes.map((node) => ({
+        id: node.id,
+        type: node.type,
+        position: node.position,
+        data: node.data,
+      })),
+      edges: edges.map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle || null,
+        targetHandle: edge.targetHandle || null,
+        animated: edge.animated || true,
+        style: edge.style || {},
+      })),
+      metadata: {
+        totalNodes: nodes.length,
+        totalEdges: edges.length,
+        serializedAt: new Date().toISOString(),
+      },
+    };
+  };
+
+  // Save rule graph to backend API
+  const handleSaveRule = async () => {
+    const serialized = serializeGraph();
+    try {
+      let saved;
+      if (currentRuleId && !currentRuleId.startsWith('rule-00')) {
+        saved = await api.updateRule(currentRuleId, serialized);
+      } else {
+        saved = await api.createRule(serialized);
+        if (saved?._id) setCurrentRuleId(saved._id);
+      }
+      await fetchRulesList();
+      setSaveStatus('Rule graph saved successfully!');
+      setTimeout(() => setSaveStatus(''), 3000);
+    } catch (err) {
+      console.error('Error saving rule graph:', err);
+      setSaveStatus('Error saving graph');
+    }
+  };
+
+  // Load a saved rule graph onto the canvas
+  const handleLoadRule = async (ruleId) => {
+    if (!ruleId) return;
+    try {
+      const rule = await api.getRuleById(ruleId);
+      if (rule) {
+        setCurrentRuleId(rule._id || rule.id || ruleId);
+        setRuleName(rule.name || 'Saved Rule');
+        setRuleDescription(rule.description || '');
+        setTargetDevice(rule.targetDeviceId || 'all');
+        if (Array.isArray(rule.nodes) && rule.nodes.length > 0) {
+          setNodes(rule.nodes);
+        }
+        if (Array.isArray(rule.edges)) {
+          setEdges(rule.edges);
+        }
+        setSaveStatus(`Loaded "${rule.name}"`);
+        setTimeout(() => setSaveStatus(''), 2500);
+        setTimeout(() => fitView({ padding: 0.2 }), 100);
+      }
+    } catch (err) {
+      console.error('Error loading rule graph:', err);
+    }
+  };
+
   const handleReset = () => {
+    setCurrentRuleId(null);
+    setRuleName('Thermal Spike Alert Pipeline');
+    setRuleDescription('Flags when temperature exceeds 32°C for over 60 seconds');
     setNodes(initialNodes);
     setEdges(initialEdges);
+    setTimeout(() => fitView({ padding: 0.2 }), 100);
   };
 
   const handleClear = () => {
@@ -147,9 +258,11 @@ function FlowCanvas() {
     setEdges([]);
   };
 
-  const handleSave = () => {
-    setSaveStatus('Rule configuration saved');
-    setTimeout(() => setSaveStatus(''), 2500);
+  const copyJsonToClipboard = () => {
+    const jsonStr = JSON.stringify(serializeGraph(), null, 2);
+    navigator.clipboard.writeText(jsonStr);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -157,47 +270,121 @@ function FlowCanvas() {
       {/* Action Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             Visual Rule Builder
-            <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>React Flow DAG</span>
+            <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>Graph Serialization</span>
           </h1>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            Drag nodes from the palette to define triggers, threshold filters, logic conditions, and incident alerts.
+            Construct React Flow DAG pipelines with JSON graph serialization and MongoDB persistence.
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+        {/* Action Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           {saveStatus && (
             <span style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
               <Check size={14} />
               {saveStatus}
             </span>
           )}
+
+          {/* Saved Rules Dropdown Loader */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#111726', padding: '0.25rem 0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+            <FolderOpen size={14} color="var(--accent-cyan)" />
+            <select
+              value={currentRuleId || ''}
+              onChange={(e) => handleLoadRule(e.target.value)}
+              className="node-field-select"
+              style={{ fontSize: '0.75rem', background: 'transparent', border: 'none' }}
+            >
+              <option value="">-- Load Saved Graph --</option>
+              {savedRules.map((r) => (
+                <option key={r._id || r.id} value={r._id || r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button 
+            onClick={() => setShowJsonModal(true)} 
+            className="btn btn-secondary" 
+            style={{ fontSize: '0.75rem', padding: '0.45rem 0.75rem' }}
+            title="Inspect serialized JSON representation"
+          >
+            <Code size={14} />
+            <span>JSON Graph</span>
+          </button>
+
           <button 
             onClick={handleClear} 
             className="btn btn-secondary" 
-            style={{ fontSize: '0.8rem', padding: '0.5rem 0.85rem' }}
-            title="Clear all nodes and connections"
+            style={{ fontSize: '0.75rem', padding: '0.45rem 0.75rem' }}
+            title="Clear all nodes and edges"
           >
             <Trash2 size={14} />
-            Clear
+            <span>Clear</span>
           </button>
+
           <button 
             onClick={handleReset} 
             className="btn btn-secondary" 
-            style={{ fontSize: '0.8rem', padding: '0.5rem 0.85rem' }}
+            style={{ fontSize: '0.75rem', padding: '0.45rem 0.75rem' }}
             title="Reset sample rule graph"
           >
             <RotateCcw size={14} />
-            Reset
+            <span>Reset</span>
           </button>
+
           <button 
-            onClick={handleSave} 
+            onClick={handleSaveRule} 
             className="btn btn-primary" 
-            style={{ fontSize: '0.8rem', padding: '0.5rem 0.85rem' }}
+            style={{ fontSize: '0.75rem', padding: '0.45rem 0.85rem' }}
           >
-            Deploy Rule
+            <Save size={14} />
+            <span>Save Rule</span>
           </button>
+        </div>
+      </div>
+
+      {/* Rule Details Meta Bar */}
+      <div className="glass-card" style={{ padding: '0.65rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '220px' }}>
+          <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Rule Name:</label>
+          <input
+            type="text"
+            value={ruleName}
+            onChange={(e) => setRuleName(e.target.value)}
+            placeholder="Enter rule name..."
+            style={{ background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.3rem 0.6rem', color: '#fff', fontSize: '0.8rem', flex: 1 }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '240px' }}>
+          <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Description:</label>
+          <input
+            type="text"
+            value={ruleDescription}
+            onChange={(e) => setRuleDescription(e.target.value)}
+            placeholder="Rule objective..."
+            style={{ background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.3rem 0.6rem', color: '#fff', fontSize: '0.8rem', flex: 1 }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Target Device:</label>
+          <select
+            value={targetDevice}
+            onChange={(e) => setTargetDevice(e.target.value)}
+            className="node-field-select"
+            style={{ padding: '0.3rem 0.6rem' }}
+          >
+            <option value="all">All Devices (Fleetwide)</option>
+            <option value="DEV-TH-101">DEV-TH-101</option>
+            <option value="DEV-TH-102">DEV-TH-102</option>
+            <option value="DEV-VB-201">DEV-VB-201</option>
+            <option value="DEV-PR-301">DEV-PR-301</option>
+          </select>
         </div>
       </div>
 
@@ -297,14 +484,13 @@ function FlowCanvas() {
           <div style={{ marginTop: 'auto', background: 'rgba(15, 23, 42, 0.7)', padding: '0.85rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--accent-cyan)', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.35rem' }}>
               <Info size={14} />
-              <span>Canvas Guide</span>
+              <span>Serialization Status</span>
             </div>
-            <ul style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', lineHeight: 1.5, paddingLeft: '1rem' }}>
-              <li><strong>Add:</strong> Drag from palette or click item</li>
-              <li><strong>Connect:</strong> Link right port to left port</li>
-              <li><strong>Move:</strong> Drag any node by header</li>
-              <li><strong>Delete:</strong> Click ✕ on node or press Delete</li>
-            </ul>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              <div>• Nodes: <strong>{nodes.length}</strong> defined</div>
+              <div>• Edges: <strong>{edges.length}</strong> linked</div>
+              <div>• Active ID: <span className="font-mono" style={{ color: 'var(--accent-cyan)' }}>{currentRuleId ? currentRuleId.slice(0, 10) + '...' : 'Unsaved draft'}</span></div>
+            </div>
           </div>
         </div>
 
@@ -332,6 +518,69 @@ function FlowCanvas() {
           </ReactFlow>
         </div>
       </div>
+
+      {/* Serialized JSON Graph Modal */}
+      {showJsonModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 200,
+        }}>
+          <div style={{
+            width: '90%',
+            maxWidth: '680px',
+            maxHeight: '85vh',
+            background: '#0d1322',
+            border: '1px solid #23314f',
+            borderRadius: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 25px 50px rgba(0,0,0,0.9)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Code size={18} color="var(--accent-cyan)" />
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff' }}>Serialized JSON Rule Graph</h3>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button 
+                  onClick={copyJsonToClipboard} 
+                  className="btn btn-secondary" 
+                  style={{ fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}
+                >
+                  <Copy size={13} />
+                  <span>{copied ? 'Copied!' : 'Copy JSON'}</span>
+                </button>
+                <button 
+                  onClick={() => setShowJsonModal(false)} 
+                  className="btn btn-outline" 
+                  style={{ padding: '0.35rem' }}
+                  aria-label="Close dialog"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* JSON Code Viewer */}
+            <div style={{ padding: '1.25rem', overflowY: 'auto', flex: 1, background: '#090d16' }}>
+              <pre className="font-mono" style={{ fontSize: '0.75rem', color: '#38bdf8', lineHeight: 1.5, margin: 0 }}>
+                {JSON.stringify(serializeGraph(), null, 2)}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

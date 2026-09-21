@@ -116,12 +116,32 @@ export const api = {
     return data || mockRules;
   },
 
+  async getRuleById(id) {
+    const data = await fetchJson(`/rules/${id}`);
+    return data || mockRules.find(r => r._id === id);
+  },
+
+  async createRule(ruleData) {
+    const res = await fetchJson('/rules', {
+      method: 'POST',
+      body: JSON.stringify(ruleData),
+    });
+    return res || { ...ruleData, _id: `rule-${Date.now()}` };
+  },
+
   async updateRule(id, ruleData) {
     const res = await fetchJson(`/rules/${id}`, {
       method: 'PUT',
       body: JSON.stringify(ruleData),
     });
     return res || ruleData;
+  },
+
+  async deleteRule(id) {
+    const res = await fetchJson(`/rules/${id}`, {
+      method: 'DELETE',
+    });
+    return res || { success: true };
   },
 
   // Alerts

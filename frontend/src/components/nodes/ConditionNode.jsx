@@ -3,7 +3,7 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { GitBranch, X } from 'lucide-react';
 
 export default function ConditionNode({ id, data }) {
-  const { deleteElements } = useReactFlow();
+  const { deleteElements, setNodes } = useReactFlow();
   const [label] = useState(data.label || 'Condition Logic');
   const [conditionType, setConditionType] = useState(data.conditionType || 'AND');
   const [duration, setDuration] = useState(data.duration || '30s');
@@ -11,6 +11,16 @@ export default function ConditionNode({ id, data }) {
   const handleDelete = (e) => {
     e.stopPropagation();
     deleteElements({ nodes: [{ id }] });
+  };
+
+  const updateConfig = (key, val) => {
+    if (key === 'conditionType') setConditionType(val);
+    if (key === 'duration') setDuration(val);
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === id ? { ...node, data: { ...node.data, [key]: val } } : node
+      )
+    );
   };
 
   return (
@@ -42,7 +52,7 @@ export default function ConditionNode({ id, data }) {
           <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Operator:</label>
           <select
             value={conditionType}
-            onChange={(e) => setConditionType(e.target.value)}
+            onChange={(e) => updateConfig('conditionType', e.target.value)}
             className="node-field-select"
           >
             <option value="AND">AND (All Met)</option>
@@ -55,7 +65,7 @@ export default function ConditionNode({ id, data }) {
           <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Window:</label>
           <select
             value={duration}
-            onChange={(e) => setDuration(e.target.value)}
+            onChange={(e) => updateConfig('duration', e.target.value)}
             className="node-field-select"
           >
             <option value="immediate">Immediate</option>
