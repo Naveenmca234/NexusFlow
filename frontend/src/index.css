@@ -704,6 +704,38 @@ code, pre, .font-mono {
   color: #fbbf24;
 }
 
+.node-math {
+  border-color: rgba(56, 189, 248, 0.6);
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.12) 0%, #111827 100%);
+}
+.node-math .node-header {
+  color: #38bdf8;
+}
+
+.node-threshold {
+  border-color: rgba(236, 72, 153, 0.6);
+  background: linear-gradient(180deg, rgba(236, 72, 153, 0.12) 0%, #111827 100%);
+}
+.node-threshold .node-header {
+  color: #f472b6;
+}
+
+.node-and {
+  border-color: rgba(16, 185, 129, 0.6);
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.12) 0%, #111827 100%);
+}
+.node-and .node-header {
+  color: #34d399;
+}
+
+.node-or {
+  border-color: rgba(245, 158, 11, 0.6);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.12) 0%, #111827 100%);
+}
+.node-or .node-header {
+  color: #fbbf24;
+}
+
 .node-condition {
   border-color: rgba(245, 158, 11, 0.6);
   background: linear-gradient(180deg, rgba(245, 158, 11, 0.12) 0%, #111827 100%);

@@ -13,6 +13,10 @@ import {
 import SensorNode from '../components/nodes/SensorNode';
 import FilterNode from '../components/nodes/FilterNode';
 import MovingAverageNode from '../components/nodes/MovingAverageNode';
+import MathNode from '../components/nodes/MathNode';
+import ThresholdNode from '../components/nodes/ThresholdNode';
+import AndNode from '../components/nodes/AndNode';
+import OrNode from '../components/nodes/OrNode';
 import ConditionNode from '../components/nodes/ConditionNode';
 import AlertNode from '../components/nodes/AlertNode';
 import { api } from '../services/api';
@@ -24,6 +28,10 @@ import {
   Cpu, 
   Filter, 
   TrendingUp,
+  Calculator,
+  Gauge,
+  GitMerge,
+  GitFork,
   GitBranch, 
   AlertTriangle,
   Info,
@@ -109,6 +117,11 @@ function FlowCanvas() {
     filter: FilterNode,
     movingAverage: MovingAverageNode,
     moving_average: MovingAverageNode,
+    mathOperation: MathNode,
+    math: MathNode,
+    threshold: ThresholdNode,
+    and: AndNode,
+    or: OrNode,
     condition: ConditionNode,
     alert: AlertNode,
   }), []);
@@ -132,6 +145,27 @@ function FlowCanvas() {
       case 'movingAverage':
       case 'moving_average':
         return { label: 'Moving Average', field: 'temperature', windowSize: 5 };
+      case 'mathOperation':
+      case 'math':
+        return { label: 'Math Operation', field: 'temperature', operator: 'add', operand: 10 };
+      case 'threshold':
+        return { label: 'Threshold', field: 'temperature', operator: '>', threshold: 80 };
+      case 'and':
+        return {
+          label: 'AND Gate',
+          conditions: [
+            { field: 'temperature', operator: '>', threshold: 80 },
+            { field: 'rpm', operator: '>', threshold: 3000 },
+          ],
+        };
+      case 'or':
+        return {
+          label: 'OR Gate',
+          conditions: [
+            { field: 'temperature', operator: '>', threshold: 85 },
+            { field: 'vibration', operator: '>', threshold: 0.5 },
+          ],
+        };
       case 'condition':
         return { label: 'Logic Condition', conditionType: 'AND', duration: '30s' };
       case 'alert':
@@ -462,12 +496,88 @@ function FlowCanvas() {
               <TrendingUp size={18} color="#fbbf24" />
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, color: '#fbbf24' }}>Moving Average</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Latest N values rolling mean</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Rolling mean window</div>
               </div>
               <Plus size={14} color="#64748b" />
             </div>
 
-            {/* 4. Condition Node */}
+            {/* 4. Math Operation Node */}
+            <div
+              className="palette-node-item"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('application/reactflow', 'mathOperation');
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onClick={() => addNodeFromPalette('mathOperation')}
+              title="Click or drag onto canvas"
+            >
+              <Calculator size={18} color="#38bdf8" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: '#38bdf8' }}>Math Operation</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Add, sub, mul, div</div>
+              </div>
+              <Plus size={14} color="#64748b" />
+            </div>
+
+            {/* 5. Threshold Node */}
+            <div
+              className="palette-node-item"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('application/reactflow', 'threshold');
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onClick={() => addNodeFromPalette('threshold')}
+              title="Click or drag onto canvas"
+            >
+              <Gauge size={18} color="#f472b6" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: '#f472b6' }}>Threshold</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>&gt;, &lt;, &gt;=, &lt;=, ==, !=</div>
+              </div>
+              <Plus size={14} color="#64748b" />
+            </div>
+
+            {/* 6. AND Gate Node */}
+            <div
+              className="palette-node-item"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('application/reactflow', 'and');
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onClick={() => addNodeFromPalette('and')}
+              title="Click or drag onto canvas"
+            >
+              <GitMerge size={18} color="#34d399" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: '#34d399' }}>AND Gate</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>All conditions must pass</div>
+              </div>
+              <Plus size={14} color="#64748b" />
+            </div>
+
+            {/* 7. OR Gate Node */}
+            <div
+              className="palette-node-item"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('application/reactflow', 'or');
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onClick={() => addNodeFromPalette('or')}
+              title="Click or drag onto canvas"
+            >
+              <GitFork size={18} color="#fbbf24" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: '#fbbf24' }}>OR Gate</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Any condition must pass</div>
+              </div>
+              <Plus size={14} color="#64748b" />
+            </div>
+
+            {/* 8. Condition Node */}
             <div
               className="palette-node-item"
               draggable
@@ -481,7 +591,7 @@ function FlowCanvas() {
               <GitBranch size={18} color="#f59e0b" />
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, color: '#f59e0b' }}>Condition</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Logic threshold evaluator</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Logic duration gate</div>
               </div>
               <Plus size={14} color="#64748b" />
             </div>

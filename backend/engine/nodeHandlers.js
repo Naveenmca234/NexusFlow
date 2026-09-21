@@ -221,6 +221,185 @@ function compileMovingAverageNode(node, ruleContext) {
 }
 
 /**
+ * Math Operation Node Handler:
+ * Supports: Add, Subtract, Multiply, Divide (+, -, *, /)
+ * Updates the target metric or outputField on the telemetry packet
+ */
+function compileMathNode(node) {
+  const field = (node.data?.field || 'temperature').toLowerCase();
+  const rawOp = (node.data?.operator || node.data?.operation || 'add').toLowerCase();
+  const operand = Number(node.data?.operand ?? node.data?.value ?? 0);
+  const outputField = (node.data?.outputField || field).toLowerCase();
+
+  return map((packet) => {
+    const rawVal = extractMetricValue(packet, field);
+    const num = Number(rawVal);
+    if (isNaN(num)) return packet;
+
+    let result = num;
+    switch (rawOp) {
+      case 'add':
+      case '+':
+        result = num + operand;
+        break;
+      case 'subtract':
+      case '-':
+        result = num - operand;
+        break;
+      case 'multiply':
+      case '*':
+        result = num * operand;
+        break;
+      case 'divide':
+      case '/':
+        result = operand !== 0 ? num / operand : num;
+        break;
+      default:
+        result = num + operand;
+    }
+    result = parseFloat(result.toFixed(2));
+
+    const updated = {
+      ...packet,
+      [outputField]: result,
+      mathResult: result,
+      rawMetricValue: rawVal,
+    };
+
+    if (updated.metrics) {
+      updated.metrics = {
+        ...updated.metrics,
+        [outputField]: result,
+      };
+    }
+
+    return updated;
+  });
+}
+
+/**
+ * Threshold Node Handler:
+ * Evaluates metric value against operator (>, <, >=, <=, ==, !=) and threshold
+ * If connected to an AND/OR combiner, tags evaluation on packet._nodeResults;
+ * otherwise acts as a direct stream filter.
+ */
+function compileThresholdNode(node, ruleContext, graphContext) {
+  const field = (node.data?.field || 'temperature').toLowerCase();
+  const operator = node.data?.operator || '>';
+  const threshold = Number(node.data?.threshold ?? 0);
+
+  // Check if this threshold node feeds into an AND or OR combiner downstream
+  const edgesFromNode = graphContext?.edges?.filter((e) => e.source === node.id) || [];
+  const feedsIntoCombiner = edgesFromNode.some((e) => {
+    const targetNode = graphContext?.nodes?.find((n) => n.id === e.target);
+    return targetNode && (targetNode.type === 'and' || targetNode.type === 'or');
+  });
+
+  if (feedsIntoCombiner) {
+    return map((packet) => {
+      const val = extractMetricValue(packet, field);
+      const passes = evaluateComparison(val, operator, threshold);
+      return {
+        ...packet,
+        _nodeResults: {
+          ...(packet._nodeResults || {}),
+          [node.id]: passes,
+        },
+      };
+    });
+  }
+
+  return filter((packet) => {
+    const val = extractMetricValue(packet, field);
+    const passes = evaluateComparison(val, operator, threshold);
+    if (packet._nodeResults) {
+      packet._nodeResults[node.id] = passes;
+    }
+    return passes;
+  });
+}
+
+/**
+ * AND Node Handler:
+ * Evaluates true ONLY IF all incoming parent condition branches AND/OR in-node criteria evaluate to true.
+ */
+function compileAndNode(node, ruleContext, graphContext) {
+  const incomingEdges = graphContext?.edges?.filter((e) => e.target === node.id) || [];
+  const parentNodeIds = incomingEdges.map((e) => e.source);
+  const conditions = Array.isArray(node.data?.conditions) ? node.data.conditions : [];
+
+  return filter((packet) => {
+    let parentsPass = true;
+    if (parentNodeIds.length > 0) {
+      // All parent nodes that evaluated a boolean result must be true
+      parentsPass = parentNodeIds.every((parentId) => {
+        if (!packet._nodeResults || packet._nodeResults[parentId] === undefined) {
+          return true; // Not an evaluation node (e.g. sensor/ma)
+        }
+        return packet._nodeResults[parentId] === true;
+      });
+    }
+
+    let conditionsPass = true;
+    if (conditions.length > 0) {
+      conditionsPass = conditions.every((c) => {
+        const val = extractMetricValue(packet, c.field);
+        return evaluateComparison(val, c.operator || '>', c.threshold ?? 0);
+      });
+    }
+
+    return parentsPass && conditionsPass;
+  });
+}
+
+/**
+ * OR Node Handler:
+ * Evaluates true IF AT LEAST ONE incoming parent condition branch OR in-node criteria evaluates to true.
+ */
+function compileOrNode(node, ruleContext, graphContext) {
+  const incomingEdges = graphContext?.edges?.filter((e) => e.target === node.id) || [];
+  const parentNodeIds = incomingEdges.map((e) => e.source);
+  const conditions = Array.isArray(node.data?.conditions) ? node.data.conditions : [];
+
+  return filter((packet) => {
+    let parentEvaluatedCount = 0;
+    let parentsPass = false;
+
+    if (parentNodeIds.length > 0) {
+      for (const parentId of parentNodeIds) {
+        if (packet._nodeResults && packet._nodeResults[parentId] !== undefined) {
+          parentEvaluatedCount++;
+          if (packet._nodeResults[parentId] === true) {
+            parentsPass = true;
+            break;
+          }
+        }
+      }
+    }
+
+    let conditionsPass = false;
+    if (conditions.length > 0) {
+      conditionsPass = conditions.some((c) => {
+        const val = extractMetricValue(packet, c.field);
+        return evaluateComparison(val, c.operator || '>', c.threshold ?? 0);
+      });
+    }
+
+    if (parentEvaluatedCount > 0 && conditions.length > 0) {
+      return parentsPass || conditionsPass;
+    }
+    if (parentEvaluatedCount > 0) {
+      return parentsPass;
+    }
+    if (conditions.length > 0) {
+      return conditionsPass;
+    }
+
+    return true;
+  });
+}
+
+/**
  * Modular Node Handler Registry
  * Allows easily registering additional node types in the future
  */
@@ -231,6 +410,11 @@ const NODE_HANDLERS = {
   alert: compileAlertNode,
   movingAverage: compileMovingAverageNode,
   moving_average: compileMovingAverageNode,
+  mathOperation: compileMathNode,
+  math: compileMathNode,
+  threshold: compileThresholdNode,
+  and: compileAndNode,
+  or: compileOrNode,
 };
 
 module.exports = {
@@ -241,4 +425,8 @@ module.exports = {
   compileConditionNode,
   compileAlertNode,
   compileMovingAverageNode,
+  compileMathNode,
+  compileThresholdNode,
+  compileAndNode,
+  compileOrNode,
 };

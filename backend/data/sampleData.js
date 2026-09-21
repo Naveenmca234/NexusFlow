@@ -237,6 +237,45 @@ const sampleRules = [
       { id: 'e31-32', source: '31', target: '32', animated: true },
       { id: 'e32-33', source: '32', target: '33', animated: true }
     ]
+  },
+  {
+    _id: 'rule-005',
+    name: 'Dual Threshold Emergency Shutdown',
+    description: 'Triggers critical emergency shutdown when Temperature > 80°C AND RPM > 3000 simultaneously.',
+    enabled: true,
+    targetDeviceId: 'DEV-TH-101',
+    executionCount: 5,
+    lastTriggered: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+    nodes: [
+      {
+        id: '40',
+        type: 'sensor',
+        position: { x: 50, y: 140 },
+        data: { label: 'Motor Telemetry', targetDeviceId: 'DEV-TH-101' },
+      },
+      {
+        id: '41',
+        type: 'and',
+        position: { x: 450, y: 140 },
+        data: {
+          label: 'Temp & RPM Interlock',
+          conditions: [
+            { field: 'temperature', operator: '>', threshold: 80 },
+            { field: 'rpm', operator: '>', threshold: 3000 },
+          ],
+        },
+      },
+      {
+        id: '42',
+        type: 'alert',
+        position: { x: 750, y: 140 },
+        data: { label: 'Emergency Interlock Alert', severity: 'critical', channel: 'Dashboard' },
+      },
+    ],
+    edges: [
+      { id: 'e40-41', source: '40', target: '41', animated: true },
+      { id: 'e41-42', source: '41', target: '42', animated: true },
+    ],
   }
 ];
 

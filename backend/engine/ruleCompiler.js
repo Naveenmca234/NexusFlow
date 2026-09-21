@@ -73,12 +73,16 @@ function compileRuleGraph(ruleGraph, telemetrySource$) {
 
   // Order nodes by execution flow (Sensor -> Filter -> Condition -> Alert)
   const orderedNodes = orderNodesFromGraph(ruleGraph.nodes, ruleGraph.edges || []);
+  const graphContext = {
+    nodes: ruleGraph.nodes || [],
+    edges: ruleGraph.edges || [],
+  };
   const operators = [];
 
   for (const node of orderedNodes) {
     const handlerFactory = NODE_HANDLERS[node.type];
     if (typeof handlerFactory === 'function') {
-      const op = handlerFactory(node, ruleContext);
+      const op = handlerFactory(node, ruleContext, graphContext);
       if (op) operators.push(op);
     } else {
       console.warn(`[RuleCompiler] Unknown node type: "${node.type}". Skipping.`);

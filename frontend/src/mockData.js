@@ -158,4 +158,18 @@ export const mockRules = [
       { id: '33', type: 'alert' }
     ]
   },
+  {
+    _id: 'rule-005',
+    name: 'Dual Threshold Emergency Shutdown',
+    description: 'Triggers critical emergency shutdown when Temperature > 80°C AND RPM > 3000 simultaneously.',
+    enabled: true,
+    targetDeviceId: 'DEV-TH-101',
+    executionCount: 5,
+    lastTriggered: '45m ago',
+    nodes: [
+      { id: '40', type: 'sensor' },
+      { id: '41', type: 'and' },
+      { id: '42', type: 'alert' }
+    ]
+  },
 ];
