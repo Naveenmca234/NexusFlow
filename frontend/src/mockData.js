@@ -143,4 +143,19 @@ export const mockRules = [
     executionCount: 29,
     lastTriggered: 'Never',
   },
+  {
+    _id: 'rule-004',
+    name: 'Motor Temperature Moving Average',
+    description: 'Calculates rolling average of 5 temperature readings and alerts if average exceeds 80°C.',
+    enabled: true,
+    targetDeviceId: 'DEV-TH-101',
+    executionCount: 12,
+    lastTriggered: '30m ago',
+    nodes: [
+      { id: '30', type: 'sensor' },
+      { id: '31', type: 'movingAverage' },
+      { id: '32', type: 'condition' },
+      { id: '33', type: 'alert' }
+    ]
+  },
 ];

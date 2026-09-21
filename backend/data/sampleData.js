@@ -197,6 +197,46 @@ const sampleRules = [
       { id: 'e20-21', source: '20', target: '21' },
       { id: 'e21-22', source: '21', target: '22' }
     ]
+  },
+  {
+    _id: 'rule-004',
+    name: 'Motor Temperature Moving Average',
+    description: 'Calculates rolling average of 5 temperature readings and alerts if average exceeds 80°C.',
+    enabled: true,
+    targetDeviceId: 'DEV-TH-101',
+    executionCount: 12,
+    lastTriggered: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    nodes: [
+      {
+        id: '30',
+        type: 'sensor',
+        position: { x: 50, y: 140 },
+        data: { label: 'Thermal Sensor 101', metric: 'temperature', interval: '2s' }
+      },
+      {
+        id: '31',
+        type: 'movingAverage',
+        position: { x: 300, y: 140 },
+        data: { label: 'Rolling Mean (5)', field: 'temperature', windowSize: 5 }
+      },
+      {
+        id: '32',
+        type: 'condition',
+        position: { x: 550, y: 140 },
+        data: { label: 'Average > 80°C', field: 'temperature', operator: '>', threshold: 80 }
+      },
+      {
+        id: '33',
+        type: 'alert',
+        position: { x: 800, y: 140 },
+        data: { label: 'Moving Avg Spike Alert', severity: 'warning', channel: 'Dashboard' }
+      }
+    ],
+    edges: [
+      { id: 'e30-31', source: '30', target: '31', animated: true },
+      { id: 'e31-32', source: '31', target: '32', animated: true },
+      { id: 'e32-33', source: '32', target: '33', animated: true }
+    ]
   }
 ];
 

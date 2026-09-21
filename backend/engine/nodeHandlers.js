@@ -170,6 +170,57 @@ function compileAlertNode(node, ruleContext) {
 }
 
 /**
+ * Moving Average Node Handler:
+ * Calculates the moving average of the latest N telemetry values for a target field
+ * and passes the calculated average to the next node in the pipeline.
+ */
+function compileMovingAverageNode(node, ruleContext) {
+  const windowSize = Math.max(Number(node.data?.windowSize || node.data?.window) || 5, 1);
+  const field = (node.data?.field || 'temperature').toLowerCase();
+  const buffers = new Map();
+
+  return map((packet) => {
+    const rawVal = extractMetricValue(packet, field);
+    const num = Number(rawVal);
+    if (isNaN(num)) {
+      return packet;
+    }
+
+    const deviceKey = packet.deviceId || 'default';
+    if (!buffers.has(deviceKey)) {
+      buffers.set(deviceKey, []);
+    }
+    const windowQueue = buffers.get(deviceKey);
+    windowQueue.push(num);
+    if (windowQueue.length > windowSize) {
+      windowQueue.shift();
+    }
+
+    const sum = windowQueue.reduce((acc, curr) => acc + curr, 0);
+    const avg = parseFloat((sum / windowQueue.length).toFixed(2));
+
+    // Map calculated average into the packet so downstream nodes (Filter, Condition, Alert) receive it
+    const mappedPacket = {
+      ...packet,
+      [field]: avg,
+      movingAverage: avg,
+      rawMetricValue: rawVal,
+      movingAverageWindow: windowQueue.length,
+      movingAverageConfigWindow: windowSize,
+    };
+
+    if (mappedPacket.metrics) {
+      mappedPacket.metrics = {
+        ...mappedPacket.metrics,
+        [field]: avg,
+      };
+    }
+
+    return mappedPacket;
+  });
+}
+
+/**
  * Modular Node Handler Registry
  * Allows easily registering additional node types in the future
  */
@@ -178,6 +229,8 @@ const NODE_HANDLERS = {
   filter: compileFilterNode,
   condition: compileConditionNode,
   alert: compileAlertNode,
+  movingAverage: compileMovingAverageNode,
+  moving_average: compileMovingAverageNode,
 };
 
 module.exports = {
@@ -187,4 +240,5 @@ module.exports = {
   compileFilterNode,
   compileConditionNode,
   compileAlertNode,
+  compileMovingAverageNode,
 };

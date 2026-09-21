@@ -696,6 +696,14 @@ code, pre, .font-mono {
   color: #c084fc;
 }
 
+.node-moving-average {
+  border-color: rgba(245, 158, 11, 0.6);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.12) 0%, #111827 100%);
+}
+.node-moving-average .node-header {
+  color: #fbbf24;
+}
+
 .node-condition {
   border-color: rgba(245, 158, 11, 0.6);
   background: linear-gradient(180deg, rgba(245, 158, 11, 0.12) 0%, #111827 100%);

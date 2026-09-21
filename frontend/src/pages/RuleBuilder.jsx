@@ -12,16 +12,18 @@ import {
 } from '@xyflow/react';
 import SensorNode from '../components/nodes/SensorNode';
 import FilterNode from '../components/nodes/FilterNode';
+import MovingAverageNode from '../components/nodes/MovingAverageNode';
 import ConditionNode from '../components/nodes/ConditionNode';
 import AlertNode from '../components/nodes/AlertNode';
 import { api } from '../services/api';
 import { 
   Plus, 
   RotateCcw, 
-  Trash2,
+  Trash2, 
   Layers, 
   Cpu, 
   Filter, 
+  TrendingUp,
   GitBranch, 
   AlertTriangle,
   Info,
@@ -105,6 +107,8 @@ function FlowCanvas() {
   const nodeTypes = useMemo(() => ({
     sensor: SensorNode,
     filter: FilterNode,
+    movingAverage: MovingAverageNode,
+    moving_average: MovingAverageNode,
     condition: ConditionNode,
     alert: AlertNode,
   }), []);
@@ -125,6 +129,9 @@ function FlowCanvas() {
         return { label: 'New Sensor', metric: 'temperature', interval: '5s' };
       case 'filter':
         return { label: 'Value Filter', field: 'temperature', operator: '>', threshold: 50 };
+      case 'movingAverage':
+      case 'moving_average':
+        return { label: 'Moving Average', field: 'temperature', windowSize: 5 };
       case 'condition':
         return { label: 'Logic Condition', conditionType: 'AND', duration: '30s' };
       case 'alert':
@@ -441,7 +448,26 @@ function FlowCanvas() {
               <Plus size={14} color="#64748b" />
             </div>
 
-            {/* 3. Condition Node */}
+            {/* 3. Moving Average Node */}
+            <div
+              className="palette-node-item"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('application/reactflow', 'movingAverage');
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onClick={() => addNodeFromPalette('movingAverage')}
+              title="Click or drag onto canvas"
+            >
+              <TrendingUp size={18} color="#fbbf24" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: '#fbbf24' }}>Moving Average</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Latest N values rolling mean</div>
+              </div>
+              <Plus size={14} color="#64748b" />
+            </div>
+
+            {/* 4. Condition Node */}
             <div
               className="palette-node-item"
               draggable
@@ -452,10 +478,10 @@ function FlowCanvas() {
               onClick={() => addNodeFromPalette('condition')}
               title="Click or drag onto canvas"
             >
-              <GitBranch size={18} color="#fbbf24" />
+              <GitBranch size={18} color="#f59e0b" />
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, color: '#fbbf24' }}>Condition</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>AND / OR logic gate</div>
+                <div style={{ fontWeight: 600, color: '#f59e0b' }}>Condition</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Logic threshold evaluator</div>
               </div>
               <Plus size={14} color="#64748b" />
             </div>
