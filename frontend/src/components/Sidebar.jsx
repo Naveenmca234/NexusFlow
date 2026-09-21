@@ -6,13 +6,12 @@ import {
   Cpu, 
   Activity, 
   AlertTriangle, 
-  LogIn, 
-  Zap,
-  Radio,
-  Server
+  Zap, 
+  X,
+  Radio
 } from 'lucide-react';
 
-export default function Sidebar() {
+export default function Sidebar({ isOpen, onClose }) {
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/rules', label: 'Rule Builder', icon: Workflow },
@@ -22,23 +21,36 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       <div>
         {/* Brand Header */}
         <div className="brand-section">
-          <div className="brand-logo-icon">
-            <Zap size={20} />
+          <div className="brand-logo-container">
+            <div className="brand-logo-icon">
+              <Zap size={20} />
+            </div>
+            <div>
+              <div className="brand-title">NexusFlow</div>
+              <div className="brand-subtitle">IoT Rule Engine</div>
+            </div>
           </div>
-          <div>
-            <div className="brand-title">NexusFlow</div>
-            <div className="brand-subtitle">IoT Rule Engine</div>
-          </div>
+          
+          {/* Mobile Close Button */}
+          {onClose && (
+            <button 
+              className="sidebar-close-btn" 
+              onClick={onClose}
+              aria-label="Close navigation menu"
+            >
+              <X size={20} />
+            </button>
+          )}
         </div>
 
         {/* Navigation Items */}
-        <nav className="nav-links">
-          <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0.5rem 0.85rem', fontWeight: 600 }}>
-            Operational Engine
+        <nav className="nav-links" aria-label="Main Navigation">
+          <div className="nav-group-label">
+            Operational Menu
           </div>
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -47,6 +59,7 @@ export default function Sidebar() {
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                onClick={onClose}
               >
                 <Icon size={18} />
                 <span>{item.label}</span>
@@ -56,20 +69,16 @@ export default function Sidebar() {
         </nav>
       </div>
 
-      {/* Footer Info & Auth */}
-      <div style={{ padding: '1.25rem', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        <div style={{ background: '#111726', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+      {/* Footer Info Badge */}
+      <div className="sidebar-footer">
+        <div className="sidebar-status-card">
+          <div className="status-card-header">
             <Radio size={14} color="#10b981" />
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#f8fafc' }}>MQTT Broker</span>
+            <span className="status-card-title">Telemetry Engine</span>
           </div>
-          <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>tcp://broker.nexusflow.io:1883</p>
+          <p className="status-card-desc">Status: Ready & Active</p>
+          <div className="status-card-meta">v1.0.0 • Production Ready</div>
         </div>
-
-        <NavLink to="/login" className="nav-item" style={{ padding: '0.5rem 0.75rem' }}>
-          <LogIn size={16} />
-          <span>Switch Account / Login</span>
-        </NavLink>
       </div>
     </aside>
   );
