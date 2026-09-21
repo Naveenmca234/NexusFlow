@@ -8,54 +8,57 @@ NexusFlow is a full-stack IoT telemetry and visual rule processing application. 
 
 ```text
 NexusFlow/
+├── .gitignore               # Git ignore rules for node_modules, build artifacts, env files
+├── README.md                # Project documentation and quick start guide
 ├── backend/
 │   ├── config/
-│   │   └── db.js                # MongoDB connection handler with resilient fallback
+│   │   └── db.js            # MongoDB connection handler with resilient fallback
 │   ├── data/
-│   │   └── sampleData.js        # Default IoT fleet, telemetry & rule fixtures
+│   │   └── sampleData.js    # Default IoT fleet, telemetry & rule fixtures
 │   ├── models/
-│   │   ├── Device.js            # Sensor node Mongoose model
-│   │   ├── Telemetry.js         # Time series metric packets model
-│   │   ├── Rule.js              # Visual rule graph (nodes & edges) model
-│   │   └── Alert.js             # Triggered incident model
+│   │   ├── Device.js        # Sensor node Mongoose model
+│   │   ├── Telemetry.js     # Time series metric packets model
+│   │   ├── Rule.js          # Visual rule graph (nodes & edges) model
+│   │   └── Alert.js         # Triggered incident model
 │   ├── routes/
-│   │   ├── deviceRoutes.js      # CRUD API for IoT devices
-│   │   ├── telemetryRoutes.js   # Telemetry streaming & time-series endpoints
-│   │   ├── ruleRoutes.js        # Rule graph storage & activation
-│   │   ├── alertRoutes.js       # Incident management endpoints
-│   │   └── dashboardRoutes.js   # Aggregated fleet telemetry stats
-│   ├── .env.example             # Environment variable template
-│   ├── package.json
-│   └── server.js                # Express application entrypoint
+│   │   ├── deviceRoutes.js  # CRUD API for IoT devices
+│   │   ├── telemetryRoutes.js # Telemetry streaming & time-series endpoints
+│   │   ├── ruleRoutes.js    # Rule graph storage & activation
+│   │   ├── alertRoutes.js   # Incident management endpoints
+│   │   └── dashboardRoutes.js # Aggregated fleet telemetry stats
+│   ├── .env.example         # Backend environment variable template
+│   ├── package.json         # Backend dependencies and scripts
+│   └── server.js            # Express application entrypoint
 │
 └── frontend/
     ├── public/
     ├── src/
     │   ├── components/
-    │   │   ├── nodes/           # Custom React Flow nodes
+    │   │   ├── nodes/       # Custom React Flow nodes
     │   │   │   ├── SensorNode.jsx
     │   │   │   ├── FilterNode.jsx
     │   │   │   ├── ConditionNode.jsx
     │   │   │   └── AlertNode.jsx
-    │   │   ├── Layout.jsx       # App shell layout
-    │   │   ├── Navbar.jsx       # Status bar, latency indicator & clock
-    │   │   └── Sidebar.jsx      # Navigation & broker status
+    │   │   ├── Layout.jsx   # App shell layout
+    │   │   ├── Navbar.jsx   # Status bar, latency indicator & clock
+    │   │   └── Sidebar.jsx  # Navigation & broker status
     │   ├── pages/
-    │   │   ├── Login.jsx        # Authentication portal
-    │   │   ├── Dashboard.jsx    # Fleet KPIs & Recharts telemetry area chart
-    │   │   ├── RuleBuilder.jsx  # React Flow drag-and-drop rule builder
-    │   │   ├── Devices.jsx      # Sensor fleet inventory & provisioning
-    │   │   ├── Telemetry.jsx    # Live stream table & dual trend charts
-    │   │   └── Alerts.jsx       # Incident triage & status resolution
+    │   │   ├── Login.jsx    # Authentication portal
+    │   │   ├── Dashboard.jsx # Fleet KPIs & Recharts telemetry area chart
+    │   │   ├── RuleBuilder.jsx # React Flow drag-and-drop rule builder
+    │   │   ├── Devices.jsx  # Sensor fleet inventory & provisioning
+    │   │   ├── Telemetry.jsx # Live stream table & dual trend charts
+    │   │   └── Alerts.jsx   # Incident triage & status resolution
     │   ├── services/
-    │   │   └── api.js           # API client with automatic fallback
-    │   ├── App.jsx              # Routing definition
-    │   ├── index.css            # Dark high-tech IoT theme & design system
-    │   ├── main.jsx             # React entrypoint
-    │   └── mockData.js          # Fallback dataset
-    ├── index.html
-    ├── package.json
-    └── vite.config.js
+    │   │   └── api.js       # API client with automatic fallback & env configuration
+    │   ├── App.jsx          # Routing definition
+    │   ├── index.css        # Dark high-tech IoT theme & design system
+    │   ├── main.jsx         # React entrypoint
+    │   └── mockData.js      # Fallback dataset
+    ├── .env.example         # Frontend environment variable template
+    ├── index.html           # HTML entrypoint
+    ├── package.json         # Frontend dependencies and scripts
+    └── vite.config.js       # Vite configuration with /api proxy
 ```
 
 ---
