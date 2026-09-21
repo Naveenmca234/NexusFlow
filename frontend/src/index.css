@@ -712,6 +712,45 @@ code, pre, .font-mono {
   color: #fb7185;
 }
 
+.node-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.node-delete-btn:hover {
+  background: rgba(244, 63, 94, 0.2);
+  border-color: rgba(244, 63, 94, 0.4);
+  color: #fb7185;
+}
+
+.node-field-select,
+.node-field-input {
+  background: #090d16;
+  border: 1px solid #1e293b;
+  color: #f8fafc;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s ease;
+}
+
+.node-field-select:focus,
+.node-field-input:focus {
+  border-color: var(--accent-cyan);
+}
+
+
 .palette-node-item {
   display: flex;
   align-items: center;
