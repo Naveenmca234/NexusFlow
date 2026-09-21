@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Device = require('../models/Device');
 const { getIsConnected } = require('../config/db');
 const { sampleDevices } = require('../data/sampleData');
 
 let inMemoryDevices = [...sampleDevices];
 
-// GET all devices
+// GET /api/devices - Get all devices
 router.get('/', async (req, res) => {
   try {
     if (getIsConnected()) {
@@ -17,40 +18,50 @@ router.get('/', async (req, res) => {
     }
     return res.json(inMemoryDevices);
   } catch (err) {
-    console.error('Error fetching devices:', err);
+    console.error('Error fetching devices from MongoDB:', err);
     res.json(inMemoryDevices);
   }
 });
 
-// GET single device
+// GET /api/devices/:id - Get device by ID or deviceId
 router.get('/:id', async (req, res) => {
   try {
     if (getIsConnected()) {
-      const device = await Device.findById(req.params.id) || await Device.findOne({ deviceId: req.params.id });
+      let device = null;
+      if (mongoose.Types.ObjectId.isValid(req.params.id)) {
+        device = await Device.findById(req.params.id);
+      }
+      if (!device) {
+        device = await Device.findOne({ deviceId: req.params.id });
+      }
       if (device) return res.json(device);
     }
     const found = inMemoryDevices.find(d => d._id === req.params.id || d.deviceId === req.params.id);
     if (found) return res.json(found);
     return res.status(404).json({ message: 'Device not found' });
   } catch (err) {
-    const found = inMemoryDevices.find(d => d._id === req.params.id || d.deviceId === req.params.id);
-    if (found) return res.json(found);
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST create device
+// POST /api/devices - Create device
 router.post('/', async (req, res) => {
   try {
+    const { name, deviceId, type, status, location, batteryLevel, firmwareVersion } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Device name is required' });
+    }
+
     const payload = {
-      deviceId: req.body.deviceId || `DEV-${Date.now().toString().slice(-4)}`,
-      name: req.body.name || 'New Sensor Node',
-      type: req.body.type || 'Temperature',
-      status: req.body.status || 'online',
-      location: req.body.location || 'Facility Zone',
-      batteryLevel: req.body.batteryLevel ?? 100,
-      firmwareVersion: req.body.firmwareVersion || 'v1.0.0',
+      deviceId: deviceId ? deviceId.trim() : `DEV-${(type || 'SN').slice(0, 2).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
+      name: name.trim(),
+      type: type || 'Multi-Sensor',
+      status: status || 'online',
+      location: location || 'Facility Zone 1',
+      batteryLevel: typeof batteryLevel === 'number' ? batteryLevel : 100,
+      firmwareVersion: firmwareVersion || 'v1.0.0',
       lastSeen: new Date(),
+      lastActivity: new Date(),
     };
 
     if (getIsConnected()) {
@@ -67,14 +78,20 @@ router.post('/', async (req, res) => {
   }
 });
 
-// DELETE device
+// DELETE /api/devices/:id - Delete device
 router.delete('/:id', async (req, res) => {
   try {
     if (getIsConnected()) {
-      await Device.findByIdAndDelete(req.params.id);
+      let result = null;
+      if (mongoose.Types.ObjectId.isValid(req.params.id)) {
+        result = await Device.findByIdAndDelete(req.params.id);
+      }
+      if (!result) {
+        result = await Device.findOneAndDelete({ deviceId: req.params.id });
+      }
     }
     inMemoryDevices = inMemoryDevices.filter(d => d._id !== req.params.id && d.deviceId !== req.params.id);
-    res.json({ success: true, message: 'Device deleted' });
+    res.json({ success: true, message: 'Device deleted successfully', id: req.params.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

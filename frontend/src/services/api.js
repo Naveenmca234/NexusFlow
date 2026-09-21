@@ -41,12 +41,24 @@ export const api = {
     return data || mockDevices;
   },
 
+  async getDeviceById(id) {
+    const data = await fetchJson(`/devices/${id}`);
+    return data || mockDevices.find(d => d._id === id || d.deviceId === id);
+  },
+
   async createDevice(device) {
     const res = await fetchJson('/devices', {
       method: 'POST',
       body: JSON.stringify(device),
     });
     return res || { ...device, _id: `dev-${Date.now()}` };
+  },
+
+  async deleteDevice(id) {
+    const res = await fetchJson(`/devices/${id}`, {
+      method: 'DELETE',
+    });
+    return res || { success: true };
   },
 
   // Telemetry

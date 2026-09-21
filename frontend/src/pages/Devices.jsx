@@ -4,12 +4,14 @@ import {
   Plus, 
   Search, 
   Battery, 
-  Radio, 
   MapPin, 
   Clock, 
-  RefreshCw,
+  RefreshCw, 
+  Trash2, 
+  X, 
   SlidersHorizontal,
-  X
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -19,19 +21,22 @@ export default function Devices() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [feedback, setFeedback] = useState(null);
 
-  // New device form state
-  const [newName, setNewName] = useState('');
-  const [newType, setNewType] = useState('Temperature');
-  const [newLocation, setNewLocation] = useState('Facility Unit 4');
+  // Form State
+  const [name, setName] = useState('');
+  const [deviceId, setDeviceId] = useState('');
+  const [type, setType] = useState('Temperature');
+  const [status, setStatus] = useState('online');
+  const [location, setLocation] = useState('Facility A - Zone 1');
 
   const fetchDevices = async () => {
     setLoading(true);
     try {
       const data = await api.getDevices();
-      setDevices(data);
-    } catch (e) {
-      console.error(e);
+      setDevices(data || []);
+    } catch (err) {
+      console.error('Failed to load devices:', err);
     } finally {
       setLoading(false);
     }
@@ -41,60 +46,119 @@ export default function Devices() {
     fetchDevices();
   }, []);
 
-  const handleRegisterDevice = async (e) => {
+  const handleCreateDevice = async (e) => {
     e.preventDefault();
-    const created = await api.createDevice({
-      deviceId: `DEV-${newType.slice(0, 2).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
-      name: newName,
-      type: newType,
-      location: newLocation,
-      status: 'online',
+    if (!name.trim()) return;
+
+    const payload = {
+      name: name.trim(),
+      deviceId: deviceId.trim() || `DEV-${type.slice(0, 2).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
+      type,
+      status,
+      location: location.trim() || 'Facility Zone',
       batteryLevel: 100,
       firmwareVersion: 'v1.0.0',
-    });
-    setDevices([created, ...devices]);
-    setShowModal(false);
-    setNewName('');
+      lastActivity: new Date(),
+      lastSeen: new Date(),
+    };
+
+    try {
+      const created = await api.createDevice(payload);
+      setDevices((prev) => [created, ...prev]);
+      setShowModal(false);
+      setName('');
+      setDeviceId('');
+      setLocation('Facility A - Zone 1');
+      setFeedback({ type: 'success', message: `Device "${payload.name}" added successfully.` });
+      setTimeout(() => setFeedback(null), 3000);
+    } catch (err) {
+      setFeedback({ type: 'error', message: 'Failed to create device: ' + err.message });
+    }
+  };
+
+  const handleDeleteDevice = async (id, devName) => {
+    if (!window.confirm(`Are you sure you want to delete device "${devName || id}"?`)) return;
+
+    try {
+      await api.deleteDevice(id);
+      setDevices((prev) => prev.filter((d) => d._id !== id && d.deviceId !== id));
+      setFeedback({ type: 'success', message: 'Device deleted successfully.' });
+      setTimeout(() => setFeedback(null), 3000);
+    } catch (err) {
+      setFeedback({ type: 'error', message: 'Failed to delete device: ' + err.message });
+    }
+  };
+
+  const formatLastActivity = (device) => {
+    const timeVal = device.lastActivity || device.lastSeen;
+    if (!timeVal) return 'Just now';
+    if (typeof timeVal === 'string' && (timeVal.includes('ago') || timeVal === 'Just now')) {
+      return timeVal;
+    }
+    const date = new Date(timeVal);
+    if (isNaN(date.getTime())) return 'Recently';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   const filteredDevices = devices.filter((d) => {
-    const matchesSearch = d.name.toLowerCase().includes(search.toLowerCase()) || 
-                          d.deviceId.toLowerCase().includes(search.toLowerCase()) ||
-                          d.location?.toLowerCase().includes(search.toLowerCase());
+    const q = search.toLowerCase();
+    const matchesSearch = 
+      (d.name && d.name.toLowerCase().includes(q)) || 
+      (d.deviceId && d.deviceId.toLowerCase().includes(q)) ||
+      (d.location && d.location.toLowerCase().includes(q)) ||
+      (d.type && d.type.toLowerCase().includes(q));
     const matchesStatus = statusFilter === 'all' || d.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      {/* Header */}
+      {/* Top Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#fff' }}>Connected IoT Devices</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#fff' }}>IoT Devices Fleet</h1>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-            Manage edge sensors, industrial gateways, and environmental nodes across all deployments.
+            Inventory of registered sensory nodes, environmental monitors, and edge telemetry hardware.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button onClick={fetchDevices} className="btn btn-secondary" style={{ fontSize: '0.8rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <button onClick={fetchDevices} className="btn btn-secondary" style={{ fontSize: '0.8rem' }} disabled={loading}>
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            Refresh
+            <span>Refresh</span>
           </button>
           <button onClick={() => setShowModal(true)} className="btn btn-primary" style={{ fontSize: '0.8rem' }}>
-            <Plus size={14} />
-            Register Device
+            <Plus size={16} />
+            <span>Add Device</span>
           </button>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
+      {/* Notifications / Feedback banner */}
+      {feedback && (
+        <div style={{
+          padding: '0.75rem 1rem',
+          borderRadius: '8px',
+          background: feedback.type === 'success' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(244, 63, 94, 0.12)',
+          border: `1px solid ${feedback.type === 'success' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'}`,
+          color: feedback.type === 'success' ? '#34d399' : '#fb7185',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          fontSize: '0.85rem'
+        }}>
+          {feedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+          <span>{feedback.message}</span>
+        </div>
+      )}
+
+      {/* Search and Filters Bar */}
       <div className="glass-card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: 1, minWidth: '240px', background: '#090d16', padding: '0.5rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
           <Search size={16} color="#64748b" />
           <input
             type="text"
-            placeholder="Search by device ID, name, or location..."
+            placeholder="Search by device ID, name, location or type..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: '0.85rem', outline: 'none', width: '100%' }}
@@ -118,6 +182,7 @@ export default function Devices() {
                 borderColor: statusFilter === st ? 'var(--accent-cyan)' : 'var(--border-color)',
                 borderRadius: '6px',
                 cursor: 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
               {st}
@@ -135,62 +200,77 @@ export default function Devices() {
                 <th>Status</th>
                 <th>Device ID</th>
                 <th>Device Name</th>
-                <th>Sensor Type</th>
+                <th>Type</th>
                 <th>Location</th>
                 <th>Battery</th>
-                <th>Firmware</th>
-                <th>Last Ping</th>
+                <th>Last Activity</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredDevices.map((device) => (
-                <tr key={device._id || device.deviceId}>
-                  <td>
-                    <span className={`badge badge-${device.status}`}>
-                      <span className={`status-dot ${device.status}`}></span>
-                      {device.status}
-                    </span>
-                  </td>
-                  <td className="font-mono" style={{ color: 'var(--accent-cyan)', fontWeight: 600 }}>
-                    {device.deviceId}
-                  </td>
-                  <td style={{ fontWeight: 600, color: '#f8fafc' }}>
-                    {device.name}
-                  </td>
-                  <td>
-                    <span style={{ background: '#1e293b', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', color: '#cbd5e1' }}>
-                      {device.type}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                      <MapPin size={12} color="#94a3b8" />
-                      <span>{device.location}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}>
-                      <Battery size={14} color={device.batteryLevel > 30 ? '#10b981' : '#f43f5e'} />
-                      <span className="font-mono">{device.batteryLevel}%</span>
-                    </div>
-                  </td>
-                  <td className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {device.firmwareVersion}
-                  </td>
-                  <td style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                      <Clock size={12} />
-                      <span>{device.lastSeen ? new Date(device.lastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Online'}</span>
-                    </div>
+              {filteredDevices.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                    No devices match your query. Click "Add Device" to register one.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredDevices.map((device) => (
+                  <tr key={device._id || device.deviceId}>
+                    <td>
+                      <span className={`badge badge-${device.status}`}>
+                        <span className={`status-dot ${device.status}`}></span>
+                        {device.status}
+                      </span>
+                    </td>
+                    <td className="font-mono" style={{ color: 'var(--accent-cyan)', fontWeight: 600 }}>
+                      {device.deviceId}
+                    </td>
+                    <td style={{ fontWeight: 600, color: '#f8fafc' }}>
+                      {device.name}
+                    </td>
+                    <td>
+                      <span style={{ background: '#1e293b', padding: '0.25rem 0.55rem', borderRadius: '4px', fontSize: '0.75rem', color: '#cbd5e1' }}>
+                        {device.type}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                        <MapPin size={12} color="#94a3b8" />
+                        <span>{device.location || 'Unassigned'}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}>
+                        <Battery size={14} color={device.batteryLevel > 30 ? '#10b981' : '#f43f5e'} />
+                        <span className="font-mono">{device.batteryLevel ?? 100}%</span>
+                      </div>
+                    </td>
+                    <td style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Clock size={12} />
+                        <span>{formatLastActivity(device)}</span>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button
+                        onClick={() => handleDeleteDevice(device._id || device.deviceId, device.name)}
+                        className="btn btn-outline"
+                        style={{ padding: '0.35rem 0.6rem', color: '#fb7185', borderColor: 'rgba(244, 63, 94, 0.25)' }}
+                        title="Delete Device"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Modal for adding device */}
+      {/* Add Device Modal Dialog */}
       {showModal && (
         <div style={{
           position: 'fixed',
@@ -199,7 +279,7 @@ export default function Devices() {
           right: 0,
           bottom: 0,
           background: 'rgba(0, 0, 0, 0.75)',
-          backdropFilter: 'blur(4px)',
+          backdropFilter: 'blur(5px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -207,7 +287,7 @@ export default function Devices() {
         }}>
           <div style={{
             width: '100%',
-            maxWidth: '440px',
+            maxWidth: '460px',
             background: '#111726',
             border: '1px solid #23314f',
             borderRadius: '16px',
@@ -215,52 +295,92 @@ export default function Devices() {
             boxShadow: '0 20px 40px rgba(0,0,0,0.8)',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#fff' }}>Provision IoT Sensor</h2>
-              <button onClick={() => setShowModal(false)} className="btn btn-outline" style={{ padding: '0.35rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Cpu size={20} color="var(--accent-cyan)" />
+                <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#fff' }}>Add New IoT Device</h2>
+              </div>
+              <button 
+                onClick={() => setShowModal(false)} 
+                className="btn btn-outline" 
+                style={{ padding: '0.35rem' }}
+                aria-label="Close dialog"
+              >
                 <X size={16} />
               </button>
             </div>
 
-            <form onSubmit={handleRegisterDevice} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <form onSubmit={handleCreateDevice} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
-                  Device Name
+                  Device Name <span style={{ color: '#fb7185' }}>*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Cryo Cooler B3"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="e.g. Cold Storage Temp Sensor 1"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   style={{ width: '100%', padding: '0.65rem 0.75rem', background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '0.85rem' }}
                 />
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
-                  Sensor Modality
+                  Device ID (optional, auto-generated if blank)
                 </label>
-                <select
-                  value={newType}
-                  onChange={(e) => setNewType(e.target.value)}
+                <input
+                  type="text"
+                  placeholder="e.g. DEV-TH-105"
+                  value={deviceId}
+                  onChange={(e) => setDeviceId(e.target.value)}
                   style={{ width: '100%', padding: '0.65rem 0.75rem', background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '0.85rem' }}
-                >
-                  <option value="Temperature">Temperature</option>
-                  <option value="Vibration">Vibration</option>
-                  <option value="Pressure">Pressure</option>
-                  <option value="Humidity">Humidity</option>
-                  <option value="Multi-Sensor">Multi-Sensor</option>
-                </select>
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                    Type
+                  </label>
+                  <select
+                    value={type}
+                    onChange={(e) => setType(e.target.value)}
+                    style={{ width: '100%', padding: '0.65rem 0.75rem', background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '0.85rem' }}
+                  >
+                    <option value="Temperature">Temperature</option>
+                    <option value="Humidity">Humidity</option>
+                    <option value="Pressure">Pressure</option>
+                    <option value="Vibration">Vibration</option>
+                    <option value="Multi-Sensor">Multi-Sensor</option>
+                    <option value="Gateway">Gateway</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                    Initial Status
+                  </label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                    style={{ width: '100%', padding: '0.65rem 0.75rem', background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '0.85rem' }}
+                  >
+                    <option value="online">Online</option>
+                    <option value="warning">Warning</option>
+                    <option value="offline">Offline</option>
+                  </select>
+                </div>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
-                  Installation Location
+                  Location / Zone
                 </label>
                 <input
                   type="text"
-                  value={newLocation}
-                  onChange={(e) => setNewLocation(e.target.value)}
+                  placeholder="e.g. Warehouse Alpha - Zone 3"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
                   style={{ width: '100%', padding: '0.65rem 0.75rem', background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '0.85rem' }}
                 />
               </div>
@@ -270,7 +390,7 @@ export default function Devices() {
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  Provision Device
+                  Save Device
                 </button>
               </div>
             </form>
