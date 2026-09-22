@@ -5,6 +5,7 @@ const Rule = require('../models/Rule');
 const { getIsConnected } = require('../config/db');
 const { sampleRules } = require('../data/sampleData');
 const { activateRule, deactivateRule } = require('../engine/ruleEngine');
+const { validateRuleGraph } = require('../engine/graphValidator');
 
 let inMemoryRules = JSON.parse(JSON.stringify(sampleRules));
 
@@ -20,6 +21,15 @@ router.get('/', async (req, res) => {
     console.error('Error fetching rules:', err);
     res.json(inMemoryRules);
   }
+});
+
+// POST /api/rules/validate - Audit a serialized React Flow graph before saving/compiling
+router.post('/validate', (req, res) => {
+  const report = validateRuleGraph(req.body || {});
+  return res.status(report.valid ? 200 : 422).json({
+    schema: 'nexusflow-rule-graph/v1',
+    ...report,
+  });
 });
 
 // GET /api/rules/:id - Retrieve single serialized rule graph by ID

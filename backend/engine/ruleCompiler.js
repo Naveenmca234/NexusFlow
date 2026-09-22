@@ -1,4 +1,5 @@
 const { NODE_HANDLERS } = require('./nodeHandlers');
+const { validateRuleGraph } = require('./graphValidator');
 
 /**
  * Topologically order nodes based on edges (Source -> Target sequence)
@@ -44,7 +45,8 @@ function orderNodesFromGraph(nodes = [], edges = []) {
     }
   }
 
-  // If any unvisited nodes remain (e.g. disconnected nodes), append them
+  // Preserve the previous defensive behavior for callers that use this helper
+  // directly. compileRuleGraph() rejects cyclic/invalid graphs before this step.
   for (const node of nodes) {
     if (!ordered.some((n) => n.id === node.id)) {
       ordered.push(node);
@@ -55,13 +57,20 @@ function orderNodesFromGraph(nodes = [], edges = []) {
 }
 
 /**
- * Compile a saved React Flow JSON graph into an active RxJS Observable pipeline
+ * Compile a saved React Flow JSON graph into an active RxJS Observable pipeline.
+ * Invalid graphs are rejected before any subscription is created.
  * @param {Object} ruleGraph - The saved rule object
  * @param {import('rxjs').Observable} telemetrySource$ - Telemetry event stream
  * @returns {Object|null} Active compiled pipeline metadata
  */
 function compileRuleGraph(ruleGraph, telemetrySource$) {
-  if (!ruleGraph || !ruleGraph.nodes || ruleGraph.nodes.length === 0) {
+  const validation = validateRuleGraph(ruleGraph);
+
+  if (!validation.valid) {
+    const summary = validation.errors.map((item) => item.code).join(', ');
+    console.warn(
+      `[RuleCompiler] Rejected invalid rule graph "${ruleGraph?.name || 'Untitled Rule'}": ${summary}`
+    );
     return null;
   }
 
@@ -69,7 +78,10 @@ function compileRuleGraph(ruleGraph, telemetrySource$) {
     _id: ruleGraph._id || ruleGraph.id,
     name: ruleGraph.name || 'Untitled Rule',
     targetDeviceId: ruleGraph.targetDeviceId || 'all',
-    cooldownSeconds: ruleGraph.cooldownSeconds !== undefined ? Number(ruleGraph.cooldownSeconds) : undefined,
+    cooldownSeconds:
+      ruleGraph.cooldownSeconds !== undefined
+        ? Number(ruleGraph.cooldownSeconds)
+        : undefined,
   };
 
   // Order nodes by execution flow (Sensor -> Filter -> Condition -> Alert)
@@ -85,26 +97,27 @@ function compileRuleGraph(ruleGraph, telemetrySource$) {
     if (typeof handlerFactory === 'function') {
       const op = handlerFactory(node, ruleContext, graphContext);
       if (op) operators.push(op);
-    } else {
-      console.warn(`[RuleCompiler] Unknown node type: "${node.type}". Skipping.`);
     }
   }
 
   if (operators.length === 0) {
-    console.warn(`[RuleCompiler] No executable operators generated for rule: "${ruleContext.name}"`);
+    console.warn(
+      `[RuleCompiler] No executable operators generated for rule: "${ruleContext.name}"`
+    );
     return null;
   }
 
-  // Construct the RxJS pipeline
   const compiledPipeline$ = telemetrySource$.pipe(...operators);
 
-  // Subscribe to activate the rule
   const subscription = compiledPipeline$.subscribe({
-    next: (val) => {
-      // Rule successfully evaluated and executed
+    next: () => {
+      // Pipeline evaluated successfully.
     },
     error: (err) => {
-      console.error(`[Rule Pipeline Error] in rule "${ruleContext.name}":`, err);
+      console.error(
+        `[Rule Pipeline Error] in rule "${ruleContext.name}":`,
+        err
+      );
     },
   });
 
@@ -112,6 +125,12 @@ function compileRuleGraph(ruleGraph, telemetrySource$) {
     ruleId: ruleContext._id,
     ruleName: ruleContext.name,
     orderedNodes: orderedNodes.map((n) => ({ id: n.id, type: n.type })),
+    diagnostics: {
+      warnings: validation.warnings,
+      stats: validation.stats,
+      roots: validation.roots,
+      terminals: validation.terminals,
+    },
     subscription,
     unsubscribe: () => subscription.unsubscribe(),
   };
@@ -120,4 +139,5 @@ function compileRuleGraph(ruleGraph, telemetrySource$) {
 module.exports = {
   compileRuleGraph,
   orderNodesFromGraph,
+  validateRuleGraph,
 };
