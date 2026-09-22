@@ -4,11 +4,28 @@ const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 async function fetchJson(endpoint, options = {}) {
   try {
+    const token = localStorage.getItem('nexusflow_token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    };
+
     const res = await fetch(`${BASE_URL}${endpoint}`, {
-      headers: { 'Content-Type': 'application/json' },
       ...options,
+      headers,
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => null);
+      if (res.status === 401 && endpoint === '/auth/me') {
+        return false;
+      }
+      if (errorData && errorData.error) {
+        return { error: errorData.error, status: res.status };
+      }
+      throw new Error(`HTTP ${res.status}`);
+    }
     return await res.json();
   } catch (err) {
     console.warn(`[NexusFlow API] Error calling ${endpoint}, falling back to mock:`, err.message);
@@ -17,6 +34,24 @@ async function fetchJson(endpoint, options = {}) {
 }
 
 export const api = {
+  // Auth
+  async login({ email, password }) {
+    return await fetchJson('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+  },
+
+  async register({ name, email, password }) {
+    return await fetchJson('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password }),
+    });
+  },
+
+  async getMe() {
+    return await fetchJson('/auth/me');
+  },
   // Dashboard
   async getDashboardStats() {
     const data = await fetchJson('/dashboard/stats');

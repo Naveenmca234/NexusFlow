@@ -23,7 +23,11 @@ app.use(cors({
 app.use(express.json());
 app.use(morgan('dev'));
 
+// Middleware
+const authMiddleware = require('./middleware/authMiddleware');
+
 // Routes
+const authRoutes = require('./routes/authRoutes');
 const deviceRoutes = require('./routes/deviceRoutes');
 const telemetryRoutes = require('./routes/telemetryRoutes');
 const ruleRoutes = require('./routes/ruleRoutes');
@@ -31,12 +35,16 @@ const alertRoutes = require('./routes/alertRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 
-app.use('/api/devices', deviceRoutes);
+// Public Auth & Telemetry Ingestion Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/telemetry', telemetryRoutes);
-app.use('/api/rules', ruleRoutes);
-app.use('/api/alerts', alertRoutes);
-app.use('/api/webhooks', webhookRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+
+// Protected Operational Routes
+app.use('/api/devices', authMiddleware, deviceRoutes);
+app.use('/api/rules', authMiddleware, ruleRoutes);
+app.use('/api/alerts', authMiddleware, alertRoutes);
+app.use('/api/webhooks', authMiddleware, webhookRoutes);
+app.use('/api/dashboard', authMiddleware, dashboardRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -103,6 +111,17 @@ const seedDatabaseIfEmpty = async () => {
     if (telCount === 0) {
       console.log('[Seed] Seeding telemetry time series...');
       await Telemetry.insertMany(sampleTelemetry);
+    }
+    const User = require('./models/User');
+    const userCount = await User.countDocuments();
+    if (userCount === 0) {
+      console.log('[Seed] Seeding default admin user...');
+      const adminUser = new User({
+        name: 'IoT Admin',
+        email: 'admin@nexusflow.io',
+        password: 'password123',
+      });
+      await adminUser.save();
     }
   } catch (err) {
     console.warn('[Seed Warning] Could not seed database:', err.message);
