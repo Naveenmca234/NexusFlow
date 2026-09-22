@@ -21,6 +21,7 @@ import ConditionNode from '../components/nodes/ConditionNode';
 import AlertNode from '../components/nodes/AlertNode';
 import WebhookNode from '../components/nodes/WebhookNode';
 import { api } from '../services/api';
+import { serializeRuleGraph } from '../utils/ruleGraphSerializer';
 import { useNexusWebSocket } from '../hooks/useNexusWebSocket';
 import { 
   Plus, 
@@ -262,35 +263,16 @@ function FlowCanvas() {
     setNodes((nds) => nds.concat(newNode));
   };
 
-  // Serialize React Flow graph into standardized JSON representation
-  const serializeGraph = () => {
-    return {
-      name: ruleName.trim() || 'Untitled Rule Graph',
-      description: ruleDescription.trim(),
+  // Serialize React Flow graph through the shared Week 2 graph contract.
+  const serializeGraph = () =>
+    serializeRuleGraph({
+      name: ruleName,
+      description: ruleDescription,
       enabled: true,
       targetDeviceId: targetDevice,
-      nodes: nodes.map((node) => ({
-        id: node.id,
-        type: node.type,
-        position: node.position,
-        data: node.data,
-      })),
-      edges: edges.map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle || null,
-        targetHandle: edge.targetHandle || null,
-        animated: edge.animated || true,
-        style: edge.style || {},
-      })),
-      metadata: {
-        totalNodes: nodes.length,
-        totalEdges: edges.length,
-        serializedAt: new Date().toISOString(),
-      },
-    };
-  };
+      nodes,
+      edges,
+    });
 
   // Save rule graph to backend API
   const handleSaveRule = async () => {
