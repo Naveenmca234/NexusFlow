@@ -8,10 +8,13 @@ import {
   AlertTriangle, 
   Zap, 
   X,
-  Radio
+  Radio,
+  LogOut
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Sidebar({ isOpen, onClose }) {
+  const { logout } = useAuth();
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/rules', label: 'Rule Builder', icon: Workflow },
@@ -19,6 +22,11 @@ export default function Sidebar({ isOpen, onClose }) {
     { to: '/telemetry', label: 'Telemetry', icon: Activity },
     { to: '/alerts', label: 'Alerts', icon: AlertTriangle },
   ];
+
+  const handleLogout = () => {
+    if (onClose) onClose();
+    logout();
+  };
 
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
@@ -69,7 +77,7 @@ export default function Sidebar({ isOpen, onClose }) {
         </nav>
       </div>
 
-      {/* Footer Info Badge */}
+      {/* Footer Info Badge & Logout */}
       <div className="sidebar-footer">
         <div className="sidebar-status-card">
           <div className="status-card-header">
@@ -79,6 +87,29 @@ export default function Sidebar({ isOpen, onClose }) {
           <p className="status-card-desc">Status: Ready & Active</p>
           <div className="status-card-meta">v1.0.0 • Production Ready</div>
         </div>
+
+        <button
+          onClick={handleLogout}
+          className="nav-item"
+          style={{
+            marginTop: '0.75rem',
+            width: '100%',
+            background: 'rgba(244, 63, 94, 0.08)',
+            border: '1px solid rgba(244, 63, 94, 0.2)',
+            color: '#f43f5e',
+            cursor: 'pointer',
+            padding: '0.6rem 0.8rem',
+            borderRadius: 'var(--radius-sm, 6px)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            fontSize: '0.85rem',
+            fontWeight: 500,
+          }}
+        >
+          <LogOut size={16} />
+          <span>Sign Out</span>
+        </button>
       </div>
     </aside>
   );

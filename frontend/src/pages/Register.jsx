@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { Zap, ShieldCheck, ArrowRight, Lock, Mail, AlertCircle } from 'lucide-react';
+import { Zap, ShieldCheck, ArrowRight, Lock, Mail, User, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-export default function Login() {
+export default function Register() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, isAuthenticated } = useAuth();
+  const { register, isAuthenticated } = useAuth();
 
-  const [email, setEmail] = useState('admin@nexusflow.io');
-  const [password, setPassword] = useState('admin123');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -21,17 +23,37 @@ export default function Login() {
     }
   }, [isAuthenticated, navigate, location]);
 
-  const handleLogin = async (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
     setErrorMessage('');
-    setLoading(true);
 
+    if (!name.trim()) {
+      setErrorMessage('Full name is required.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMessage('Please enter a valid email address.');
+      return;
+    }
+
+    if (password.length < 6) {
+      setErrorMessage('Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setErrorMessage('Passwords do not match.');
+      return;
+    }
+
+    setLoading(true);
     try {
-      await login(email, password);
-      const destination = location.state?.from?.pathname || '/dashboard';
-      navigate(destination, { replace: true });
+      await register(name.trim(), email.trim(), password);
+      navigate('/dashboard', { replace: true });
     } catch (err) {
-      setErrorMessage(err.message || 'Authentication failed. Please check your credentials.');
+      setErrorMessage(err.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -48,7 +70,7 @@ export default function Login() {
     }}>
       <div style={{
         width: '100%',
-        maxWidth: '440px',
+        maxWidth: '460px',
         background: '#111726',
         border: '1px solid #1e293b',
         borderRadius: '16px',
@@ -70,7 +92,7 @@ export default function Login() {
         }}></div>
 
         {/* Brand Header */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
           <div style={{
             width: '48px',
             height: '48px',
@@ -87,7 +109,7 @@ export default function Login() {
           </div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#fff' }}>NexusFlow</h1>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #94a3b8)', marginTop: '0.25rem' }}>
-            Visual IoT Telemetry & Rule Engine
+            Register IoT Engineering Account
           </p>
         </div>
 
@@ -111,9 +133,35 @@ export default function Login() {
         )}
 
         {/* Form */}
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary, #94a3b8)', marginBottom: '0.4rem' }}>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary, #94a3b8)', marginBottom: '0.35rem' }}>
+              Full Name
+            </label>
+            <div style={{ position: 'relative' }}>
+              <User size={16} color="#64748b" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                placeholder="Naveen Kumar"
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.75rem 0.65rem 2.4rem',
+                  background: '#090d16',
+                  border: '1px solid #1e293b',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  fontSize: '0.875rem',
+                  outline: 'none',
+                }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary, #94a3b8)', marginBottom: '0.35rem' }}>
               Engineer Email
             </label>
             <div style={{ position: 'relative' }}>
@@ -123,25 +171,24 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                placeholder="operator@nexusflow.io"
+                placeholder="engineer@nexusflow.io"
                 style={{
                   width: '100%',
-                  padding: '0.7rem 0.75rem 0.7rem 2.4rem',
+                  padding: '0.65rem 0.75rem 0.65rem 2.4rem',
                   background: '#090d16',
                   border: '1px solid #1e293b',
                   borderRadius: '8px',
                   color: '#fff',
                   fontSize: '0.875rem',
                   outline: 'none',
-                  transition: 'border-color 0.2s',
                 }}
               />
             </div>
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary, #94a3b8)', marginBottom: '0.4rem' }}>
-              Password
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary, #94a3b8)', marginBottom: '0.35rem' }}>
+              Password (min. 6 characters)
             </label>
             <div style={{ position: 'relative' }}>
               <Lock size={16} color="#64748b" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
@@ -153,14 +200,39 @@ export default function Login() {
                 placeholder="••••••••••••"
                 style={{
                   width: '100%',
-                  padding: '0.7rem 0.75rem 0.7rem 2.4rem',
+                  padding: '0.65rem 0.75rem 0.65rem 2.4rem',
                   background: '#090d16',
                   border: '1px solid #1e293b',
                   borderRadius: '8px',
                   color: '#fff',
                   fontSize: '0.875rem',
                   outline: 'none',
-                  transition: 'border-color 0.2s',
+                }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary, #94a3b8)', marginBottom: '0.35rem' }}>
+              Confirm Password
+            </label>
+            <div style={{ position: 'relative' }}>
+              <Lock size={16} color="#64748b" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                placeholder="••••••••••••"
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.75rem 0.65rem 2.4rem',
+                  background: '#090d16',
+                  border: '1px solid #1e293b',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  fontSize: '0.875rem',
+                  outline: 'none',
                 }}
               />
             </div>
@@ -179,28 +251,28 @@ export default function Login() {
               opacity: loading ? 0.75 : 1,
             }}
           >
-            {loading ? 'Authenticating...' : 'Enter IoT Workspace'}
+            {loading ? 'Creating Account...' : 'Create Account'}
             <ArrowRight size={16} />
           </button>
         </form>
 
-        {/* Link to Register */}
+        {/* Link to Login */}
         <div style={{
           marginTop: '1.25rem',
           textAlign: 'center',
           fontSize: '0.85rem',
           color: 'var(--text-secondary, #94a3b8)',
         }}>
-          New engineer?{' '}
+          Already registered?{' '}
           <Link
-            to="/register"
+            to="/login"
             style={{
               color: 'var(--accent-cyan, #06b6d4)',
               fontWeight: 600,
               textDecoration: 'none',
             }}
           >
-            Create account
+            Sign in
           </Link>
         </div>
 
@@ -216,7 +288,7 @@ export default function Login() {
           justifyContent: 'center',
         }}>
           <ShieldCheck size={16} color="#10b981" />
-          <span>Industrial TLS 1.3 JWT Encrypted Authentication</span>
+          <span>Bcrypt Salted Hash & JWT Protected Session</span>
         </div>
       </div>
     </div>

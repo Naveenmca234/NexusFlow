@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Menu, Bell, Activity, ShieldCheck, User } from 'lucide-react';
+import { Menu, Bell, Activity, ShieldCheck, User, LogOut } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Navbar({ onToggleSidebar }) {
   const location = useLocation();
+  const { user, logout } = useAuth();
   const [time, setTime] = useState(new Date().toLocaleTimeString());
 
   useEffect(() => {
@@ -68,15 +70,32 @@ export default function Navbar({ onToggleSidebar }) {
           <span className="notification-indicator"></span>
         </button>
 
-        {/* User Profile Badge */}
+        {/* User Profile Badge & Logout */}
         <div className="navbar-user-profile">
-          <div className="user-avatar">
+          <div className="user-avatar" title={user?.email || ''}>
             <User size={16} />
           </div>
           <div className="user-details">
-            <span className="user-name">IoT Admin</span>
-            <span className="user-role">nexus-operator</span>
+            <span className="user-name">{user?.name || 'IoT Admin'}</span>
+            <span className="user-role" title={user?.email || 'nexus-operator'}>
+              {user?.email ? user.email.split('@')[0] : 'operator'}
+            </span>
           </div>
+
+          <button
+            onClick={logout}
+            className="navbar-icon-btn"
+            title="Log Out of NexusFlow"
+            aria-label="Log Out"
+            style={{
+              marginLeft: '0.35rem',
+              color: 'var(--accent-rose, #f43f5e)',
+              borderColor: 'rgba(244, 63, 94, 0.25)',
+              background: 'rgba(244, 63, 94, 0.08)',
+            }}
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </div>
     </header>
