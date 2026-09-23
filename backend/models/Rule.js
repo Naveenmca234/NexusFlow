@@ -15,6 +15,11 @@ const ruleSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    status: {
+      type: String,
+      enum: ['active', 'paused', 'disabled'],
+      default: 'active',
+    },
     nodes: {
       type: Array,
       default: [],

@@ -4,20 +4,38 @@ const Rule = require('../models/Rule');
 const { getIsConnected } = require('../config/db');
 const { sampleRules } = require('../data/sampleData');
 
-// Map of active rule subscriptions: ruleId -> { rule, compiledPipeline }
+// Map of active rule subscriptions: ruleId -> { rule, compiledPipeline, activatedAt }
 const activeRulePipelines = new Map();
 
 /**
- * Activate and compile a rule graph into an active RxJS pipeline
+ * Check if a rule is in active state
+ * @param {Object} rule
+ */
+function isRuleActive(rule) {
+  if (!rule) return false;
+  if (rule.status) {
+    return rule.status === 'active';
+  }
+  return rule.enabled !== false;
+}
+
+/**
+ * Activate and compile a rule graph into an active RxJS pipeline.
+ * Only executes rules in active state.
+ * Prevents duplicate rule subscriptions by unsubscribing any existing instance first.
  * @param {Object} rule 
  */
 function activateRule(rule) {
-  if (!rule || !rule.enabled) return null;
-
+  if (!rule) return null;
   const ruleId = (rule._id || rule.id || rule.name).toString();
 
-  // Deactivate existing instance if previously compiled
+  // Always deactivate existing pipeline to avoid duplicate subscriptions
   deactivateRule(ruleId);
+
+  // Do not activate if paused or disabled
+  if (!isRuleActive(rule)) {
+    return null;
+  }
 
   const telemetrySource$ = getTelemetryStream();
   const compiled = compileRuleGraph(rule, telemetrySource$);
@@ -28,7 +46,7 @@ function activateRule(rule) {
       pipeline: compiled,
       activatedAt: new Date(),
     });
-    console.log(`[RuleEngine] ⚡ Rule activated: "${rule.name}" (${compiled.orderedNodes.map(n => n.type).join(' -> ')})`);
+    console.log(`[RuleEngine] 🚀 Rule activated: "${rule.name}" (${compiled.orderedNodes.map(n => n.type).join(' -> ')})`);
     return compiled;
   }
   return null;
@@ -43,8 +61,10 @@ function deactivateRule(ruleId) {
   if (idStr && activeRulePipelines.has(idStr)) {
     const entry = activeRulePipelines.get(idStr);
     try {
-      entry.pipeline.unsubscribe();
-      console.log(`[RuleEngine] ⏹ Rule deactivated: "${entry.rule.name}"`);
+      if (entry.pipeline && typeof entry.pipeline.unsubscribe === 'function') {
+        entry.pipeline.unsubscribe();
+      }
+      console.log(`[RuleEngine] 🛑 Rule deactivated: "${entry.rule.name}"`);
     } catch (e) {
       console.warn(`[RuleEngine] Warning deactivating rule ${idStr}:`, e.message);
     }
@@ -55,19 +75,39 @@ function deactivateRule(ruleId) {
 }
 
 /**
+ * Pause rule execution (unsubscribes pipeline without deleting configuration)
+ * @param {string} ruleId 
+ */
+function pauseRule(ruleId) {
+  return deactivateRule(ruleId);
+}
+
+/**
+ * Resume rule execution
+ * @param {Object} rule 
+ */
+function resumeRule(rule) {
+  if (rule) {
+    rule.status = 'active';
+    rule.enabled = true;
+  }
+  return activateRule(rule);
+}
+
+/**
  * Initialize the Rule Engine:
- * Compiles all enabled saved rule graphs from MongoDB or sample fixtures
+ * Compiles all active saved rule graphs from MongoDB or sample fixtures
  */
 async function initEngine() {
   console.log('[RuleEngine] Initializing RxJS Rule Engine...');
   try {
     let rules = [];
     if (getIsConnected()) {
-      rules = await Rule.find({ enabled: true });
+      rules = await Rule.find({ $or: [{ status: 'active' }, { status: { $exists: false }, enabled: true }] });
     }
 
     if (rules.length === 0) {
-      rules = sampleRules.filter((r) => r.enabled);
+      rules = sampleRules.filter((r) => isRuleActive(r));
     }
 
     let count = 0;
@@ -99,6 +139,7 @@ function getEngineStatus() {
     active.push({
       ruleId: id,
       ruleName: entry.rule.name,
+      status: entry.rule.status || (entry.rule.enabled ? 'active' : 'disabled'),
       activatedAt: entry.activatedAt,
       nodes: entry.pipeline.orderedNodes,
     });
@@ -114,6 +155,9 @@ module.exports = {
   initEngine,
   activateRule,
   deactivateRule,
+  pauseRule,
+  resumeRule,
+  isRuleActive,
   processTelemetry,
   getEngineStatus,
   activeRulePipelines,

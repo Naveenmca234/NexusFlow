@@ -1,6 +1,52 @@
+
+// In-memory executions fallback for tests and standalone mode
+const inMemoryExecutions = [];
+
+async function recordRuleExecution({ ruleId, ruleName, deviceId, timestamp, inputValue, result, executionStatus, errorMessage }) {
+  const executionData = {
+    ruleId: ruleId || 'unknown-rule',
+    ruleName: ruleName || 'Visual Rule',
+    deviceId: deviceId || 'unknown-device',
+    timestamp: timestamp || new Date(),
+    inputValue: inputValue ?? null,
+    result: result ?? null,
+    executionStatus: executionStatus || 'success',
+    errorMessage: errorMessage || null,
+  };
+
+  try {
+    if (getIsConnected()) {
+      const execution = new RuleExecution(executionData);
+      await execution.save();
+    }
+  } catch (err) {
+    console.warn('[RuleExecution DB Save Warning]:', err.message);
+  }
+
+  // Always append to in-memory buffer (capped at 500 entries)
+  inMemoryExecutions.unshift({
+    _id: `exec-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    ...executionData,
+    createdAt: executionData.timestamp.toISOString(),
+  });
+  if (inMemoryExecutions.length > 500) {
+    inMemoryExecutions.pop();
+  }
+}
+
+function getInMemoryExecutions(filterRuleId) {
+  if (filterRuleId) {
+    return inMemoryExecutions.filter(
+      (e) => String(e.ruleId) === String(filterRuleId)
+    );
+  }
+  return inMemoryExecutions;
+}
+
 const { filter, map, tap } = require('rxjs/operators');
 const Alert = require('../models/Alert');
 const Rule = require('../models/Rule');
+const RuleExecution = require('../models/RuleExecution');
 const { getIsConnected } = require('../config/db');
 const socketServer = require('./socketServer');
 
@@ -193,6 +239,18 @@ function compileAlertNode(node, ruleContext) {
         ruleContext.lastTriggered = new Date();
       }
 
+      // Record execution history
+      await recordRuleExecution({
+        ruleId: ruleContext?._id,
+        ruleName: ruleContext?.name,
+        deviceId: deviceId,
+        timestamp: new Date(),
+        inputValue: detectedVal,
+        result: `Alert triggered (${alertPayload.severity}): ${alertPayload.title}`,
+        executionStatus: 'success',
+        errorMessage: null,
+      });
+
       console.log(`[RuleEngine Alert] 🚨 ${alertPayload.title} -> ${alertPayload.deviceId} (${alertPayload.severity}) [cooldown: ${cooldownSeconds}s]`);
 
       // Real-time WebSocket broadcasts
@@ -205,6 +263,16 @@ function compileAlertNode(node, ruleContext) {
       });
     } catch (err) {
       console.error('[RuleEngine Alert Error]:', err.message);
+      await recordRuleExecution({
+        ruleId: ruleContext?._id,
+        ruleName: ruleContext?.name,
+        deviceId: packet?.deviceId || 'unknown',
+        timestamp: new Date(),
+        inputValue: packet?.temperature ?? null,
+        result: 'Alert evaluation error',
+        executionStatus: 'failed',
+        errorMessage: err.message,
+      });
     }
   });
 }
@@ -530,4 +598,6 @@ module.exports = {
   resetAlertCooldowns,
   webhookCooldownTracker,
   resetWebhookCooldowns,
+  recordRuleExecution,
+  getInMemoryExecutions,
 };

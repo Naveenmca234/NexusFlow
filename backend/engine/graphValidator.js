@@ -156,9 +156,9 @@ function validateRuleGraph(ruleGraph = {}) {
   const actionNodes = nodes.filter((node) => ACTION_NODE_TYPES.has(node?.type));
 
   if (sourceNodes.length === 0 && nodes.length > 0) {
-    warnings.push({
+    errors.push({
       code: 'NO_SENSOR_SOURCE',
-      message: 'Graph has no sensor source node; telemetry may not be scoped as expected.',
+      message: 'Graph has no sensor source node; at least one sensor node is required.',
     });
   }
 

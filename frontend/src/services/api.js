@@ -186,6 +186,75 @@ export const api = {
     return res;
   },
 
+  
+  // Rule Executions & Status Controls
+  async getRuleExecutions(params = {}) {
+    const clean = {};
+    if (params.ruleId) clean.ruleId = params.ruleId;
+    if (params.limit) clean.limit = params.limit;
+    const query = new URLSearchParams(clean).toString();
+    const data = await fetchJson(`/rules/executions${query ? `?${query}` : ''}`);
+    if (data && Array.isArray(data)) return data;
+    // Fallback mock executions
+    return [
+      {
+        _id: 'exec-mock-1',
+        ruleId: params.ruleId || 'rule-001',
+        ruleName: 'Overheat Detection & Shutdown',
+        deviceId: 'DEV-TH-102',
+        timestamp: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
+        inputValue: 84.5,
+        result: 'Threshold exceeded (> 75°C)',
+        executionStatus: 'success',
+        errorMessage: null,
+      },
+      {
+        _id: 'exec-mock-2',
+        ruleId: params.ruleId || 'rule-002',
+        ruleName: 'Turbine Vibration Anomaly',
+        deviceId: 'DEV-TURB-01',
+        timestamp: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
+        inputValue: 4.8,
+        result: 'Vibration anomaly detected (> 4.0 mm/s)',
+        executionStatus: 'success',
+        errorMessage: null,
+      },
+      {
+        _id: 'exec-mock-3',
+        ruleId: params.ruleId || 'rule-004',
+        ruleName: 'Motor Temperature Moving Average',
+        deviceId: 'DEV-TH-101',
+        timestamp: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+        inputValue: 62.1,
+        result: 'Window average 61.8°C evaluated',
+        executionStatus: 'success',
+        errorMessage: null,
+      },
+    ];
+  },
+
+  async updateRuleStatus(id, status) {
+    const res = await fetchJson(`/rules/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    return res;
+  },
+
+  async pauseRule(id) {
+    const res = await fetchJson(`/rules/${id}/pause`, {
+      method: 'PATCH',
+    });
+    return res;
+  },
+
+  async resumeRule(id) {
+    const res = await fetchJson(`/rules/${id}/resume`, {
+      method: 'PATCH',
+    });
+    return res;
+  },
+
   async deleteRule(id) {
     const res = await fetchJson(`/rules/${id}`, {
       method: 'DELETE',

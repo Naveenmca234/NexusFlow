@@ -2,14 +2,12 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Rule = require('../models/Rule');
+const RuleExecution = require('../models/RuleExecution');
+const { getInMemoryExecutions } = require('../engine/nodeHandlers');
 const { getIsConnected } = require('../config/db');
 const { sampleRules } = require('../data/sampleData');
-const { activateRule, deactivateRule } = require('../engine/ruleEngine');
-<<<<<<< HEAD
+const { activateRule, deactivateRule, pauseRule, resumeRule } = require('../engine/ruleEngine');
 const { validateRuleGraph } = require('../engine/graphValidator');
-=======
-const { validateRuleGraph } = require('../utils/ruleValidator');
->>>>>>> 8744739 (your commit message)
 
 let inMemoryRules = JSON.parse(JSON.stringify(sampleRules));
 
@@ -34,6 +32,49 @@ router.post('/validate', (req, res) => {
     schema: 'nexusflow-rule-graph/v1',
     ...report,
   });
+});
+
+// GET /api/rules/executions - Retrieve execution history
+router.get('/executions', async (req, res) => {
+  try {
+    const { ruleId, limit = 50 } = req.query;
+    const maxLimit = Math.min(Number(limit) || 50, 200);
+
+    if (getIsConnected()) {
+      const query = ruleId ? { ruleId } : {};
+      const executions = await RuleExecution.find(query)
+        .sort({ timestamp: -1 })
+        .limit(maxLimit);
+      return res.json(executions);
+    }
+
+    const inMemory = getInMemoryExecutions(ruleId);
+    return res.json(inMemory.slice(0, maxLimit));
+  } catch (err) {
+    console.error('Error fetching rule executions:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/rules/:id/executions - Retrieve execution history for a specific rule
+router.get('/:id/executions', async (req, res) => {
+  try {
+    const { limit = 50 } = req.query;
+    const maxLimit = Math.min(Number(limit) || 50, 200);
+
+    if (getIsConnected()) {
+      const executions = await RuleExecution.find({ ruleId: req.params.id })
+        .sort({ timestamp: -1 })
+        .limit(maxLimit);
+      return res.json(executions);
+    }
+
+    const inMemory = getInMemoryExecutions(req.params.id);
+    return res.json(inMemory.slice(0, maxLimit));
+  } catch (err) {
+    console.error('Error fetching rule executions by ID:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/rules/:id - Retrieve single serialized rule graph by ID
@@ -307,6 +348,75 @@ router.delete('/:id', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+
+
+// PATCH /api/rules/:id/status - Update execution status: active, paused, or disabled
+router.patch('/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['active', 'paused', 'disabled'].includes(status)) {
+      return res.status(400).json({ error: 'Status must be one of: active, paused, disabled' });
+    }
+
+    const isEnabled = status === 'active';
+
+    if (getIsConnected() && mongoose.Types.ObjectId.isValid(req.params.id)) {
+      const rule = await Rule.findById(req.params.id);
+      if (!rule) return res.status(404).json({ error: 'Rule not found' });
+
+      rule.status = status;
+      rule.enabled = isEnabled;
+      await rule.save();
+
+      if (status === 'active') {
+        activateRule(rule);
+      } else {
+        deactivateRule(rule._id);
+      }
+
+      return res.json({
+        message: `Rule "${rule.name}" status updated to ${status}`,
+        rule,
+      });
+    }
+
+    const idx = inMemoryRules.findIndex((r) => r._id === req.params.id || r.id === req.params.id);
+    if (idx !== -1) {
+      inMemoryRules[idx].status = status;
+      inMemoryRules[idx].enabled = isEnabled;
+      inMemoryRules[idx].updatedAt = new Date().toISOString();
+
+      if (status === 'active') {
+        activateRule(inMemoryRules[idx]);
+      } else {
+        deactivateRule(inMemoryRules[idx]._id || inMemoryRules[idx].id);
+      }
+
+      return res.json({
+        message: `Rule "${inMemoryRules[idx].name}" status updated to ${status}`,
+        rule: inMemoryRules[idx],
+      });
+    }
+
+    res.status(404).json({ error: 'Rule not found' });
+  } catch (err) {
+    console.error('Error updating rule status:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/rules/:id/pause - Pause rule execution
+router.patch('/:id/pause', async (req, res) => {
+  req.body = { status: 'paused' };
+  return router.handle(req, res);
+});
+
+// PATCH /api/rules/:id/resume - Resume rule execution
+router.patch('/:id/resume', async (req, res) => {
+  req.body = { status: 'active' };
+  return router.handle(req, res);
 });
 
 module.exports = router;

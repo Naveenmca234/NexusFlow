@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
+import Rules from './pages/Rules';
 import RuleBuilder from './pages/RuleBuilder';
 import Devices from './pages/Devices';
 import Telemetry from './pages/Telemetry';
@@ -31,7 +32,9 @@ export default function App() {
           >
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
-            <Route path="rules" element={<RuleBuilder />} />
+            <Route path="rules" element={<Rules />} />
+            <Route path="rules/builder" element={<RuleBuilder />} />
+            <Route path="rules/builder/:id" element={<RuleBuilder />} />
             <Route path="devices" element={<Devices />} />
             <Route path="telemetry" element={<Telemetry />} />
             <Route path="alerts" element={<Alerts />} />

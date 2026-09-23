@@ -1,29 +1,38 @@
 @import '@xyflow/react/dist/style.css';
 
 :root {
-  --bg-main: #0a0d14;
-  --bg-card: #111726;
-  --bg-card-hover: #161e31;
-  --bg-sidebar: #0d121f;
-  --bg-header: rgba(13, 18, 31, 0.85);
+  /* Dark Professional IoT Dashboard Theme */
+  --bg-main: #0f172a;           /* Slate 900 (Main Background) */
+  --bg-card: #1e293b;           /* Slate 800 (Secondary Background / Cards) */
+  --bg-card-hover: #243046;     /* Slate 800 Hover */
+  --bg-sidebar: #0f172a;        /* Slate 900 (Sidebar) */
+  --bg-header: rgba(15, 23, 42, 0.9);
   
-  --border-color: #1e293b;
-  --border-focus: #06b6d4;
-  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-color: #334155;      /* Slate 700 (Borders) */
+  --border-focus: #6366f1;      /* Indigo 500 (Primary Accent Focus) */
+  --border-subtle: rgba(51, 65, 85, 0.6);
 
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary: #f8fafc;      /* Slate 50 (Main Text) */
+  --text-secondary: #94a3b8;    /* Slate 400 (Muted Text) */
+  --text-muted: #64748b;        /* Slate 500 */
 
-  --accent-cyan: #06b6d4;
+  --accent-primary: #6366f1;    /* Indigo 500 (Primary Accent) */
+  --accent-primary-hover: #4f46e5;
+  --accent-primary-glow: rgba(99, 102, 241, 0.25);
+  
+  --accent-cyan: #06b6d4;       /* Cyan 500 (Telemetry Accent) */
   --accent-cyan-glow: rgba(6, 182, 212, 0.25);
+  
   --accent-blue: #3b82f6;
   --accent-purple: #8b5cf6;
-  --accent-emerald: #10b981;
+  
+  --accent-emerald: #10b981;    /* Emerald (Success / Active) */
   --accent-emerald-glow: rgba(16, 185, 129, 0.2);
-  --accent-amber: #f59e0b;
+  
+  --accent-amber: #f59e0b;      /* Amber (Warning / Paused) */
   --accent-amber-glow: rgba(245, 158, 11, 0.2);
-  --accent-rose: #f43f5e;
+  
+  --accent-rose: #f43f5e;       /* Rose (Danger / Alerts / Errors) */
   --accent-rose-glow: rgba(244, 63, 94, 0.25);
 
   --radius-sm: 6px;
@@ -31,7 +40,7 @@
   --radius-lg: 16px;
   
   --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 15px rgba(6, 182, 212, 0.15);
+  --shadow-glow: 0 0 15px rgba(99, 102, 241, 0.15);
 }
 
 * {
@@ -503,9 +512,15 @@ code, pre, .font-mono {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent-cyan), #0284c7);
-  color: #fff;
-  box-shadow: 0 0 12px var(--accent-cyan-glow);
+  background: var(--accent-primary, #6366f1);
+  color: #ffffff;
+  border: 1px solid var(--accent-primary, #6366f1);
+  box-shadow: 0 2px 8px var(--accent-primary-glow);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-primary-hover, #4f46e5);
+  border-color: var(--accent-primary-hover, #4f46e5);
+  transform: translateY(-1px);
 }
 
 .btn-primary:hover {
@@ -514,9 +529,14 @@ code, pre, .font-mono {
 }
 
 .btn-secondary {
-  background: #1e293b;
-  color: var(--text-primary);
-  border-color: #334155;
+  background: var(--bg-card, #1e293b);
+  color: var(--text-primary, #f8fafc);
+  border: 1px solid var(--border-color, #334155);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-card-hover, #243046);
+  border-color: var(--text-muted);
+  color: #ffffff;
 }
 
 .btn-secondary:hover {
@@ -1071,3 +1091,21 @@ code, pre, .font-mono {
 
 
 
+
+
+/* Status Badges for Dark IoT Dashboard */
+.badge-active {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #34d399;
+}
+.badge-paused {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+.badge-disabled {
+  background: rgba(100, 116, 139, 0.15);
+  border: 1px solid rgba(100, 116, 139, 0.3);
+  color: #94a3b8;
+}
