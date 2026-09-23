@@ -23,6 +23,7 @@ import WebhookNode from '../components/nodes/WebhookNode';
 import { api } from '../services/api';
 import { serializeRuleGraph } from '../utils/ruleGraphSerializer';
 import { useNexusWebSocket } from '../hooks/useNexusWebSocket';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   Plus, 
   RotateCcw, 
@@ -50,7 +51,10 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  RefreshCw
+  RefreshCw,
+  ArrowLeft,
+  Power,
+  AlertOctagon
 } from 'lucide-react';
 
 const initialNodes = [
@@ -89,8 +93,169 @@ const initialEdges = [
 let idCounter = 10;
 const getId = (type) => `${type}-${Date.now()}-${idCounter++}`;
 
+// Comprehensive validation helper for React Flow rule graphs
+function validateRuleGraphClient(name, nodes, edges) {
+  const errors = [];
+
+  if (!name || !name.trim()) {
+    errors.push('Rule Name is required.');
+  }
+
+  const validNodes = Array.isArray(nodes) ? nodes : [];
+  const validEdges = Array.isArray(edges) ? edges : [];
+
+  if (validNodes.length === 0) {
+    errors.push('Rule must contain at least two nodes.');
+    return errors;
+  }
+
+  const sourceNodes = validNodes.filter((n) => n.type === 'sensor');
+  const actionNodes = validNodes.filter((n) => n.type === 'alert' || n.type === 'webhook');
+
+  if (sourceNodes.length === 0) {
+    errors.push('Required node missing: Rule must contain at least one Sensor (Source) node.');
+  }
+
+  if (actionNodes.length === 0) {
+    errors.push('Required node missing: Rule must contain at least one Alert or Webhook (Action) node.');
+  }
+
+  if (validNodes.length < 2) {
+    errors.push('Rule must contain at least one Source node and one Action node.');
+  }
+
+  const nodeMap = new Map();
+  validNodes.forEach((n) => {
+    if (n.id) nodeMap.set(n.id, n);
+  });
+
+  const inDegree = new Map();
+  const outDegree = new Map();
+
+  validNodes.forEach((n) => {
+    inDegree.set(n.id, 0);
+    outDegree.set(n.id, 0);
+  });
+
+  validEdges.forEach((edge, idx) => {
+    if (!edge.source || !edge.target) {
+      errors.push(`Edge #${idx + 1} has an undefined source or target.`);
+      return;
+    }
+    if (!nodeMap.has(edge.source)) {
+      errors.push(`Edge references non-existent node: "${edge.source}".`);
+      return;
+    }
+    if (!nodeMap.has(edge.target)) {
+      errors.push(`Edge references non-existent node: "${edge.target}".`);
+      return;
+    }
+    if (edge.source === edge.target) {
+      errors.push(`Self-referencing loop detected on node: "${nodeMap.get(edge.source)?.data?.label || edge.source}".`);
+      return;
+    }
+
+    inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+    outDegree.set(edge.source, (outDegree.get(edge.source) || 0) + 1);
+  });
+
+  validNodes.forEach((node) => {
+    const label = node.data?.label || `${node.type} (${node.id})`;
+    const inCount = inDegree.get(node.id) || 0;
+    const outCount = outDegree.get(node.id) || 0;
+
+    if (inCount === 0 && outCount === 0) {
+      errors.push(`Disconnected node: "${label}" has no connections.`);
+      return;
+    }
+
+    if (node.type === 'sensor') {
+      if (outCount === 0) {
+        errors.push(`Source node "${label}" must have an outgoing connection.`);
+      }
+    } else if (node.type === 'alert' || node.type === 'webhook') {
+      if (inCount === 0) {
+        errors.push(`Action node "${label}" must have an incoming connection.`);
+      }
+    } else {
+      if (inCount === 0) {
+        errors.push(`Intermediate node "${label}" must have an incoming connection.`);
+      }
+      if (outCount === 0) {
+        errors.push(`Intermediate node "${label}" must have an outgoing connection.`);
+      }
+    }
+  });
+
+  // Check reachability
+  if (sourceNodes.length > 0 && actionNodes.length > 0 && errors.length === 0) {
+    const visited = new Set();
+    const queue = sourceNodes.map((s) => s.id);
+    queue.forEach((id) => visited.add(id));
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const outgoingEdges = validEdges.filter((e) => e.source === current);
+      for (const e of outgoingEdges) {
+        if (!visited.has(e.target)) {
+          visited.add(e.target);
+          queue.push(e.target);
+        }
+      }
+    }
+
+    const reachableActions = actionNodes.filter((a) => visited.has(a.id));
+    if (reachableActions.length === 0) {
+      errors.push('No connected pipeline path exists from a Source sensor to an Action node.');
+    }
+  }
+
+  // Node configurations
+  validNodes.forEach((node) => {
+    const label = node.data?.label || `${node.type} (${node.id})`;
+    const data = node.data || {};
+
+    if (node.type === 'filter' || node.type === 'threshold') {
+      if (data.threshold === undefined || data.threshold === null || data.threshold === '') {
+        errors.push(`Configuration: Node "${label}" requires a numeric threshold value.`);
+      } else if (isNaN(Number(data.threshold))) {
+        errors.push(`Configuration: Node "${label}" threshold must be a valid number.`);
+      }
+      if (!data.operator) {
+        errors.push(`Configuration: Node "${label}" requires a comparison operator.`);
+      }
+    } else if (node.type === 'webhook') {
+      if (!data.url || !data.url.trim()) {
+        errors.push(`Configuration: Webhook node "${label}" requires a destination URL.`);
+      } else {
+        try {
+          const u = new URL(data.url.trim());
+          if (!['http:', 'https:'].includes(u.protocol)) {
+            errors.push(`Configuration: Webhook node "${label}" URL must use HTTP or HTTPS.`);
+          }
+        } catch {
+          errors.push(`Configuration: Webhook node "${label}" contains an invalid URL format.`);
+        }
+      }
+    } else if (node.type === 'movingAverage' || node.type === 'moving_average') {
+      if (!data.windowSize || isNaN(Number(data.windowSize)) || Number(data.windowSize) < 1) {
+        errors.push(`Configuration: Moving Average node "${label}" requires window size >= 1.`);
+      }
+    } else if (node.type === 'math' || node.type === 'mathOperation') {
+      if (data.operand === undefined || data.operand === null || data.operand === '' || isNaN(Number(data.operand))) {
+        errors.push(`Configuration: Math node "${label}" requires a numeric operand.`);
+      }
+    }
+  });
+
+  return errors;
+}
+
 function FlowCanvas() {
   const reactFlowWrapper = useRef(null);
+  const { id } = useParams();
+  const navigate = useNavigate();
+
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const { screenToFlowPosition, fitView } = useReactFlow();
@@ -101,7 +266,14 @@ function FlowCanvas() {
   const [ruleName, setRuleName] = useState('Thermal Spike Alert Pipeline');
   const [ruleDescription, setRuleDescription] = useState('Flags when temperature exceeds 32°C for over 60 seconds');
   const [targetDevice, setTargetDevice] = useState('DEV-TH-102');
-  
+  const [ruleEnabled, setRuleEnabled] = useState(true);
+
+  // Validation & Modal State
+  const [validationErrors, setValidationErrors] = useState([]);
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
   // Feedback & Modal State
   const [saveStatus, setSaveStatus] = useState('');
   const [showJsonModal, setShowJsonModal] = useState(false);
@@ -274,23 +446,145 @@ function FlowCanvas() {
       edges,
     });
 
-  // Save rule graph to backend API
+  // Auto-load rule if :id is provided in URL
+  useEffect(() => {
+    if (id) {
+      handleLoadRule(id);
+    }
+  }, [id]);
+
+  // Save rule graph to backend API with validation
   const handleSaveRule = async () => {
-    const serialized = serializeGraph();
+    setValidationErrors([]);
+    const errors = validateRuleGraphClient(ruleName, nodes, edges);
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      setShowValidationModal(true);
+      return;
+    }
+
+    setIsSaving(true);
+    const serialized = {
+      ...serializeGraph(),
+      enabled: ruleEnabled,
+    };
+
     try {
       let saved;
       if (currentRuleId && !currentRuleId.startsWith('rule-00')) {
         saved = await api.updateRule(currentRuleId, serialized);
       } else {
         saved = await api.createRule(serialized);
-        if (saved?._id) setCurrentRuleId(saved._id);
+        if (saved?._id) {
+          setCurrentRuleId(saved._id);
+          navigate(`/rules/builder/${saved._id}`, { replace: true });
+        }
       }
+
+      if (saved && (saved.error || saved.details)) {
+        setValidationErrors(saved.details || [saved.error]);
+        setShowValidationModal(true);
+        return;
+      }
+
       await fetchRulesList();
-      setSaveStatus('Rule graph saved successfully!');
+      setSaveStatus('Rule graph saved and activated in engine!');
       setTimeout(() => setSaveStatus(''), 3000);
     } catch (err) {
       console.error('Error saving rule graph:', err);
-      setSaveStatus('Error saving graph');
+      setValidationErrors([err.message || 'Error saving rule to server']);
+      setShowValidationModal(true);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Create a brand new rule
+  const handleCreateNewRule = () => {
+    setCurrentRuleId(null);
+    setRuleName('New IoT Rule Pipeline');
+    setRuleDescription('Enter description for this automated telemetry rule...');
+    setTargetDevice('all');
+    setRuleEnabled(true);
+    setNodes([
+      {
+        id: 'sensor-1',
+        type: 'sensor',
+        position: { x: 50, y: 150 },
+        data: { label: 'IoT Sensor Stream', metric: 'temperature', interval: '2s' },
+      },
+      {
+        id: 'filter-2',
+        type: 'filter',
+        position: { x: 340, y: 150 },
+        data: { label: 'Threshold Filter', field: 'temperature', operator: '>', threshold: 45 },
+      },
+      {
+        id: 'alert-3',
+        type: 'alert',
+        position: { x: 630, y: 150 },
+        data: { label: 'Incident Alert', severity: 'warning', cooldownSeconds: 30 },
+      },
+    ]);
+    setEdges([
+      { id: 'e1-2', source: 'sensor-1', target: 'filter-2', animated: true, style: { stroke: '#06b6d4', strokeWidth: 2 } },
+      { id: 'e2-3', source: 'filter-2', target: 'alert-3', animated: true, style: { stroke: '#f59e0b', strokeWidth: 2 } },
+    ]);
+    setValidationErrors([]);
+    navigate('/rules/builder', { replace: true });
+    setTimeout(() => fitView({ padding: 0.2 }), 100);
+  };
+
+  // Duplicate current rule
+  const handleDuplicateCurrent = async () => {
+    if (currentRuleId) {
+      try {
+        const res = await api.duplicateRule(currentRuleId);
+        if (res && (res._id || res.id)) {
+          const newId = res._id || res.id;
+          await fetchRulesList();
+          navigate(`/rules/builder/${newId}`);
+          setSaveStatus(`Duplicated as "${res.name}"`);
+          setTimeout(() => setSaveStatus(''), 3000);
+        }
+      } catch (err) {
+        console.error('Error duplicating rule:', err);
+      }
+    } else {
+      setRuleName((prev) => `${prev} (Copy)`);
+      setSaveStatus('Cloned locally (click Save to persist)');
+      setTimeout(() => setSaveStatus(''), 3000);
+    }
+  };
+
+  // Delete current rule
+  const handleDeleteCurrent = async () => {
+    if (!currentRuleId) return;
+    try {
+      await api.deleteRule(currentRuleId);
+      setShowDeleteConfirm(false);
+      navigate('/rules');
+    } catch (err) {
+      console.error('Error deleting rule:', err);
+    }
+  };
+
+  // Toggle active/disabled status
+  const handleToggleCurrent = async () => {
+    if (currentRuleId) {
+      try {
+        const res = await api.toggleRule(currentRuleId);
+        if (res && res.rule) {
+          setRuleEnabled(res.rule.enabled);
+          setSaveStatus(`Rule is now ${res.rule.enabled ? 'Active / Enabled' : 'Disabled'}`);
+          setTimeout(() => setSaveStatus(''), 2500);
+          fetchRulesList();
+        }
+      } catch (err) {
+        console.error('Error toggling rule:', err);
+      }
+    } else {
+      setRuleEnabled((prev) => !prev);
     }
   };
 
@@ -304,6 +598,7 @@ function FlowCanvas() {
         setRuleName(rule.name || 'Saved Rule');
         setRuleDescription(rule.description || '');
         setTargetDevice(rule.targetDeviceId || 'all');
+        setRuleEnabled(rule.enabled !== undefined ? rule.enabled : true);
         if (Array.isArray(rule.nodes) && rule.nodes.length > 0) {
           setNodes(rule.nodes);
         }
@@ -323,8 +618,10 @@ function FlowCanvas() {
     setCurrentRuleId(null);
     setRuleName('Thermal Spike Alert Pipeline');
     setRuleDescription('Flags when temperature exceeds 32°C for over 60 seconds');
+    setRuleEnabled(true);
     setNodes(initialNodes);
     setEdges(initialEdges);
+    navigate('/rules/builder', { replace: true });
     setTimeout(() => fitView({ padding: 0.2 }), 100);
   };
 
@@ -344,14 +641,49 @@ function FlowCanvas() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1rem' }}>
       {/* Action Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            Visual Rule Builder
-            <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>Graph Serialization</span>
-          </h1>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            Construct React Flow DAG pipelines with JSON graph serialization and MongoDB persistence.
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {/* Back to Rules link */}
+          <Link
+            to="/rules"
+            className="btn btn-secondary"
+            style={{ fontSize: '0.75rem', padding: '0.45rem 0.65rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+            title="Return to Rules Overview"
+          >
+            <ArrowLeft size={14} />
+            <span>Rules</span>
+          </Link>
+
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <h1 style={{ fontSize: '1.35rem', fontWeight: 700, color: '#fff' }}>
+                Visual Rule Builder
+              </h1>
+              {/* Quick Enable/Disable toggle in toolbar */}
+              <button
+                onClick={handleToggleCurrent}
+                title={ruleEnabled ? 'Rule is ACTIVE. Click to disable.' : 'Rule is DISABLED. Click to enable.'}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: '999px',
+                  background: ruleEnabled ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.2)',
+                  border: ruleEnabled ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(100, 116, 139, 0.3)',
+                  color: ruleEnabled ? '#34d399' : '#94a3b8',
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <Power size={11} />
+                <span>{ruleEnabled ? 'ACTIVE' : 'DISABLED'}</span>
+              </button>
+            </div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              {currentRuleId ? `Editing Rule ID: ${currentRuleId}` : 'Building New Pipeline'}
+            </p>
+          </div>
         </div>
 
         {/* Action Controls */}
@@ -363,23 +695,62 @@ function FlowCanvas() {
             </span>
           )}
 
+          {/* New Rule */}
+          <button
+            onClick={handleCreateNewRule}
+            className="btn btn-secondary"
+            style={{ fontSize: '0.75rem', padding: '0.45rem 0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+            title="Create a fresh rule template"
+          >
+            <Plus size={14} />
+            <span>New Rule</span>
+          </button>
+
           {/* Saved Rules Dropdown Loader */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#111726', padding: '0.25rem 0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
             <FolderOpen size={14} color="var(--accent-cyan)" />
             <select
               value={currentRuleId || ''}
-              onChange={(e) => handleLoadRule(e.target.value)}
+              onChange={(e) => {
+                if (e.target.value) {
+                  navigate(`/rules/builder/${e.target.value}`);
+                }
+              }}
               className="node-field-select"
               style={{ fontSize: '0.75rem', background: 'transparent', border: 'none' }}
             >
-              <option value="">-- Load Saved Graph --</option>
+              <option value="">-- Load Saved Rule --</option>
               {savedRules.map((r) => (
                 <option key={r._id || r.id} value={r._id || r.id}>
-                  {r.name}
+                  {r.name} {r.enabled === false ? '(Disabled)' : ''}
                 </option>
               ))}
             </select>
           </div>
+
+          {/* Duplicate Rule */}
+          <button
+            onClick={handleDuplicateCurrent}
+            className="btn btn-secondary"
+            style={{ fontSize: '0.75rem', padding: '0.45rem 0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+            title="Duplicate current rule graph"
+          >
+            <Copy size={13} />
+            <span>Duplicate</span>
+          </button>
+
+          {/* Delete Rule (if saved) */}
+          {currentRuleId && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="btn btn-secondary"
+              style={{ fontSize: '0.75rem', padding: '0.45rem 0.75rem', color: '#f43f5e', borderColor: 'rgba(244, 63, 94, 0.3)' }}
+              title="Delete this rule"
+            >
+              <Trash2 size={13} />
+              <span>Delete</span>
+            </button>
+          )}
 
           <button 
             onClick={() => setShowJsonModal(true)} 
@@ -388,7 +759,7 @@ function FlowCanvas() {
             title="Inspect serialized JSON representation"
           >
             <Code size={14} />
-            <span>JSON Graph</span>
+            <span>JSON</span>
           </button>
 
           <button 
@@ -398,7 +769,7 @@ function FlowCanvas() {
             title="Inspect real-time webhook execution logs"
           >
             <ScrollText size={14} />
-            <span>Webhook Logs</span>
+            <span>Webhooks</span>
           </button>
 
           <button 
@@ -421,13 +792,15 @@ function FlowCanvas() {
             <span>Reset</span>
           </button>
 
+          {/* Save Rule */}
           <button 
             onClick={handleSaveRule} 
+            disabled={isSaving}
             className="btn btn-primary" 
-            style={{ fontSize: '0.75rem', padding: '0.45rem 0.85rem' }}
+            style={{ fontSize: '0.75rem', padding: '0.45rem 0.95rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
           >
             <Save size={14} />
-            <span>Save Rule</span>
+            <span>{isSaving ? 'Validating & Saving...' : 'Save Rule'}</span>
           </button>
         </div>
       </div>

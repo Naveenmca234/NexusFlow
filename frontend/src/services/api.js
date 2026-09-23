@@ -21,8 +21,8 @@ async function fetchJson(endpoint, options = {}) {
       if (res.status === 401 && endpoint === '/auth/me') {
         return false;
       }
-      if (errorData && errorData.error) {
-        return { error: errorData.error, status: res.status };
+      if (errorData && (errorData.error || errorData.details)) {
+        return { error: errorData.error, details: errorData.details, status: res.status };
       }
       throw new Error(`HTTP ${res.status}`);
     }
@@ -153,7 +153,7 @@ export const api = {
 
   async getRuleById(id) {
     const data = await fetchJson(`/rules/${id}`);
-    return data || mockRules.find(r => r._id === id);
+    return data || mockRules.find(r => r._id === id || r.id === id);
   },
 
   async createRule(ruleData) {
@@ -161,7 +161,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(ruleData),
     });
-    return res || { ...ruleData, _id: `rule-${Date.now()}` };
+    return res;
   },
 
   async updateRule(id, ruleData) {
@@ -169,7 +169,21 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(ruleData),
     });
-    return res || ruleData;
+    return res;
+  },
+
+  async toggleRule(id) {
+    const res = await fetchJson(`/rules/${id}/toggle`, {
+      method: 'PATCH',
+    });
+    return res;
+  },
+
+  async duplicateRule(id) {
+    const res = await fetchJson(`/rules/${id}/duplicate`, {
+      method: 'POST',
+    });
+    return res;
   },
 
   async deleteRule(id) {

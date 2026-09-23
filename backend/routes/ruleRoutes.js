@@ -5,7 +5,11 @@ const Rule = require('../models/Rule');
 const { getIsConnected } = require('../config/db');
 const { sampleRules } = require('../data/sampleData');
 const { activateRule, deactivateRule } = require('../engine/ruleEngine');
+<<<<<<< HEAD
 const { validateRuleGraph } = require('../engine/graphValidator');
+=======
+const { validateRuleGraph } = require('../utils/ruleValidator');
+>>>>>>> 8744739 (your commit message)
 
 let inMemoryRules = JSON.parse(JSON.stringify(sampleRules));
 
@@ -51,21 +55,28 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST /api/rules - Create and serialize a new rule graph
+// POST /api/rules - Create, validate and serialize a new rule graph
 router.post('/', async (req, res) => {
   try {
-    const { name, description, enabled, nodes, edges, targetDeviceId } = req.body;
-    if (!name) {
-      return res.status(400).json({ error: 'Rule name is required' });
+    const { name, description, enabled, nodes, edges, targetDeviceId, cooldownSeconds } = req.body;
+
+    // Validate graph and configuration values
+    const validation = validateRuleGraph(req.body);
+    if (!validation.valid) {
+      return res.status(400).json({
+        error: 'Rule validation failed',
+        details: validation.errors,
+      });
     }
 
     const payload = {
       name: name.trim(),
-      description: description || '',
-      enabled: enabled !== undefined ? enabled : true,
+      description: description ? description.trim() : '',
+      enabled: enabled !== undefined ? Boolean(enabled) : true,
       nodes: Array.isArray(nodes) ? nodes : [],
       edges: Array.isArray(edges) ? edges : [],
       targetDeviceId: targetDeviceId || 'all',
+      cooldownSeconds: cooldownSeconds ? Number(cooldownSeconds) : 30,
       executionCount: 0,
       lastTriggered: null,
     };
@@ -73,8 +84,10 @@ router.post('/', async (req, res) => {
     if (getIsConnected()) {
       const newRule = new Rule(payload);
       const saved = await newRule.save();
-      // Activate pipeline in RxJS Rule Engine
-      activateRule(saved);
+      // Activate pipeline in RxJS Rule Engine if enabled
+      if (saved.enabled) {
+        activateRule(saved);
+      }
       return res.status(201).json(saved);
     }
 
@@ -85,10 +98,12 @@ router.post('/', async (req, res) => {
       updatedAt: new Date().toISOString(),
     };
     inMemoryRules.unshift(created);
-    // Activate pipeline in RxJS Rule Engine
-    activateRule(created);
+    if (created.enabled) {
+      activateRule(created);
+    }
     res.status(201).json(created);
   } catch (err) {
+    console.error('Error creating rule:', err);
     res.status(400).json({ error: err.message });
   }
 });
@@ -96,24 +111,60 @@ router.post('/', async (req, res) => {
 // PUT /api/rules/:id - Update serialized rule graph (nodes, edges, configuration)
 router.put('/:id', async (req, res) => {
   try {
-    const { name, description, enabled, nodes, edges, targetDeviceId } = req.body;
+    const { name, description, enabled, nodes, edges, targetDeviceId, cooldownSeconds } = req.body;
+
+    // Fetch existing rule to merge before validation
+    let existing = null;
+    if (getIsConnected() && mongoose.Types.ObjectId.isValid(req.params.id)) {
+      existing = await Rule.findById(req.params.id);
+    } else {
+      existing = inMemoryRules.find((r) => r._id === req.params.id || r.id === req.params.id);
+    }
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Rule not found' });
+    }
+
+    const mergedForValidation = {
+      name: name !== undefined ? name : existing.name,
+      description: description !== undefined ? description : existing.description,
+      enabled: enabled !== undefined ? enabled : existing.enabled,
+      nodes: nodes !== undefined ? nodes : existing.nodes,
+      edges: edges !== undefined ? edges : existing.edges,
+      targetDeviceId: targetDeviceId !== undefined ? targetDeviceId : existing.targetDeviceId,
+      cooldownSeconds: cooldownSeconds !== undefined ? cooldownSeconds : existing.cooldownSeconds,
+    };
+
+    // Run validation on merged configuration
+    const validation = validateRuleGraph(mergedForValidation);
+    if (!validation.valid) {
+      return res.status(400).json({
+        error: 'Rule validation failed',
+        details: validation.errors,
+      });
+    }
 
     if (getIsConnected() && mongoose.Types.ObjectId.isValid(req.params.id)) {
       const updated = await Rule.findByIdAndUpdate(
         req.params.id,
         {
-          ...(name && { name: name.trim() }),
-          ...(description !== undefined && { description }),
-          ...(enabled !== undefined && { enabled }),
-          ...(nodes && { nodes }),
-          ...(edges && { edges }),
-          ...(targetDeviceId && { targetDeviceId }),
+          ...(name !== undefined && { name: name.trim() }),
+          ...(description !== undefined && { description: description.trim() }),
+          ...(enabled !== undefined && { enabled: Boolean(enabled) }),
+          ...(nodes !== undefined && { nodes }),
+          ...(edges !== undefined && { edges }),
+          ...(targetDeviceId !== undefined && { targetDeviceId }),
+          ...(cooldownSeconds !== undefined && { cooldownSeconds: Number(cooldownSeconds) }),
         },
         { new: true }
       );
+
       if (updated) {
-        // Re-compile active pipeline in RxJS engine
-        activateRule(updated);
+        if (updated.enabled) {
+          activateRule(updated);
+        } else {
+          deactivateRule(updated._id);
+        }
         return res.json(updated);
       }
     }
@@ -122,16 +173,123 @@ router.put('/:id', async (req, res) => {
     if (idx !== -1) {
       inMemoryRules[idx] = {
         ...inMemoryRules[idx],
-        ...req.body,
+        ...(name !== undefined && { name: name.trim() }),
+        ...(description !== undefined && { description: description.trim() }),
+        ...(enabled !== undefined && { enabled: Boolean(enabled) }),
+        ...(nodes !== undefined && { nodes }),
+        ...(edges !== undefined && { edges }),
+        ...(targetDeviceId !== undefined && { targetDeviceId }),
+        ...(cooldownSeconds !== undefined && { cooldownSeconds: Number(cooldownSeconds) }),
         updatedAt: new Date().toISOString(),
       };
-      // Re-compile active pipeline in RxJS engine
-      activateRule(inMemoryRules[idx]);
+
+      if (inMemoryRules[idx].enabled) {
+        activateRule(inMemoryRules[idx]);
+      } else {
+        deactivateRule(inMemoryRules[idx]._id || inMemoryRules[idx].id);
+      }
       return res.json(inMemoryRules[idx]);
     }
 
     res.status(404).json({ error: 'Rule not found' });
   } catch (err) {
+    console.error('Error updating rule:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/rules/:id/toggle - Enable or disable rule
+router.patch('/:id/toggle', async (req, res) => {
+  try {
+    if (getIsConnected() && mongoose.Types.ObjectId.isValid(req.params.id)) {
+      const existing = await Rule.findById(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ error: 'Rule not found' });
+      }
+
+      const nextStatus = !existing.enabled;
+      existing.enabled = nextStatus;
+      await existing.save();
+
+      if (nextStatus) {
+        activateRule(existing);
+      } else {
+        deactivateRule(existing._id);
+      }
+
+      return res.json({
+        message: `Rule "${existing.name}" is now ${nextStatus ? 'enabled' : 'disabled'}`,
+        rule: existing,
+      });
+    }
+
+    const idx = inMemoryRules.findIndex((r) => r._id === req.params.id || r.id === req.params.id);
+    if (idx !== -1) {
+      const nextStatus = !inMemoryRules[idx].enabled;
+      inMemoryRules[idx].enabled = nextStatus;
+      inMemoryRules[idx].updatedAt = new Date().toISOString();
+
+      if (nextStatus) {
+        activateRule(inMemoryRules[idx]);
+      } else {
+        deactivateRule(inMemoryRules[idx]._id || inMemoryRules[idx].id);
+      }
+
+      return res.json({
+        message: `Rule "${inMemoryRules[idx].name}" is now ${nextStatus ? 'enabled' : 'disabled'}`,
+        rule: inMemoryRules[idx],
+      });
+    }
+
+    res.status(404).json({ error: 'Rule not found' });
+  } catch (err) {
+    console.error('Error toggling rule:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/rules/:id/duplicate - Duplicate an existing rule
+router.post('/:id/duplicate', async (req, res) => {
+  try {
+    let original = null;
+    if (getIsConnected() && mongoose.Types.ObjectId.isValid(req.params.id)) {
+      original = await Rule.findById(req.params.id);
+    } else {
+      original = inMemoryRules.find((r) => r._id === req.params.id || r.id === req.params.id);
+    }
+
+    if (!original) {
+      return res.status(404).json({ error: 'Original rule not found to duplicate' });
+    }
+
+    const duplicatePayload = {
+      name: `${original.name} (Copy)`,
+      description: original.description || '',
+      enabled: false, // Default to disabled to let user configure before activating
+      nodes: JSON.parse(JSON.stringify(original.nodes || [])),
+      edges: JSON.parse(JSON.stringify(original.edges || [])),
+      targetDeviceId: original.targetDeviceId || 'all',
+      cooldownSeconds: original.cooldownSeconds || 30,
+      executionCount: 0,
+      lastTriggered: null,
+    };
+
+    if (getIsConnected()) {
+      const duplicatedRule = new Rule(duplicatePayload);
+      const saved = await duplicatedRule.save();
+      return res.status(201).json(saved);
+    }
+
+    const created = {
+      ...duplicatePayload,
+      _id: `rule-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    inMemoryRules.unshift(created);
+    res.status(201).json(created);
+  } catch (err) {
+    console.error('Error duplicating rule:', err);
     res.status(500).json({ error: err.message });
   }
 });
