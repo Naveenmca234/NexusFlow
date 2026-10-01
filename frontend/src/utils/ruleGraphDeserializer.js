@@ -31,6 +31,7 @@ export function deserializeRuleGraph(payload = {}) {
   const warnings = [];
   const seenNodeIds = new Set();
   let repairedNodeIds = 0;
+  let repairedEdgeIds = 0;
   let droppedEdges = 0;
 
   const nodes = Array.isArray(payload.nodes)
@@ -98,6 +99,7 @@ export function deserializeRuleGraph(payload = {}) {
         id = `${requestedId}-${suffix++}`;
       }
       if (id !== requestedId) {
+        repairedEdgeIds += 1;
         warnings.push(`Duplicate edge id "${requestedId}" was restored as "${id}".`);
       }
       seenEdgeIds.add(id);
@@ -119,17 +121,21 @@ export function deserializeRuleGraph(payload = {}) {
     warnings.push(`Graph schema "${schema}" differs from supported schema "${RULE_GRAPH_SCHEMA}".`);
   }
 
+  const targetDeviceId = String(payload.targetDeviceId || 'all').trim() || 'all';
+
   return {
     graph: {
       name: String(payload.name || '').trim() || 'Saved Rule',
       description: String(payload.description || '').trim(),
       enabled: payload.enabled !== false,
-      targetDeviceId: payload.targetDeviceId || 'all',
+      targetDeviceId,
       nodes,
       edges,
       metadata: {
         ...(payload.metadata || {}),
         schema: schema || RULE_GRAPH_SCHEMA,
+        totalNodes: nodes.length,
+        totalEdges: edges.length,
       },
     },
     warnings,
@@ -137,7 +143,9 @@ export function deserializeRuleGraph(payload = {}) {
       restoredNodes: nodes.length,
       restoredEdges: edges.length,
       repairedNodeIds,
+      repairedEdgeIds,
       droppedEdges,
+      warningCount: warnings.length,
     },
   };
 }
