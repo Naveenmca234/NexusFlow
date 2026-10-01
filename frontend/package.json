@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:week2": "node test_week2_serializer.js"
   },
   "dependencies": {
     "@xyflow/react": "^12.3.6",
