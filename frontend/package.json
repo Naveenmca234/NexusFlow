@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:week2": "node test_week2_serializer.js"
+    "test:week2": "node test_week2_serializer.js && node test_week2_deserializer.js",
+    "test:week2:serializer": "node test_week2_serializer.js",
+    "test:week2:deserializer": "node test_week2_deserializer.js"
   },
   "dependencies": {
     "@xyflow/react": "^12.3.6",
